@@ -1,0 +1,210 @@
+# ---------------------------------------------------------------------------
+# Switchboard remediation configuration
+#
+# Every branch, SLA, routing target and guardrail lives here rather than in
+# Python. The engine interprets this file; it does not encode any of it.
+#
+# The practical consequence: an operations manager can add a request type,
+# retune an SLA, or add an escalation phrase by editing this file. No code
+# change, no deploy, no developer. That is the difference between a demo and
+# something an operations floor could actually adopt.
+# ---------------------------------------------------------------------------
+
+version: "1.0"
+context:
+  client: "Northgate Servicing"
+  domain: "Consumer lending and mortgage servicing operations desk"
+  persona: "Tier-1 operations associate working a shared inbox queue"
+
+defaults:
+  # Below this confidence, the system stops and asks a human rather than
+  # acting. Tuned on the validation split, not guessed — see docs/evaluation.md
+  confidence_threshold: 0.72
+  # Identical message from the same sender inside this window is suppressed
+  # rather than re-executed. Prevents duplicate acknowledgements and double
+  # routing when a customer resends or a mail client retries.
+  duplicate_window_minutes: 60
+  # Multi-intent: when a secondary type is detected we act on the primary and
+  # raise a flag rather than silently dropping the second intent.
+  flag_secondary_intent: true
+
+# Urgency is classified independently of type and modulates behaviour inside
+# whichever branch is selected.
+urgency_sla_minutes:
+  low: 2880      # 2 working days
+  medium: 480    # 8 hours
+  high: 120      # 2 hours
+  critical: 15   # 15 minutes
+
+# ---------------------------------------------------------------------------
+# Guardrails
+#
+# Deterministic pre-filters that run on the raw message text BEFORE the
+# model's proposal is trusted. They may only escalate — force a more serious
+# type, raise urgency, or demand human review. They can never de-escalate.
+#
+# Rationale: a false escalation costs an associate two minutes. A missed
+# hardship disclosure is a regulatory and human failure. The asymmetry is not
+# close, so the system is deliberately biased toward caution.
+# ---------------------------------------------------------------------------
+guardrails:
+  - id: hardship_disclosure
+    description: "Customer signals inability to pay or financial distress"
+    phrases:
+      - "can't afford"
+      - "cannot afford"
+      - "lost my job"
+      - "made redundant"
+      - "behind on payments"
+      - "struggling to pay"
+      - "no income"
+      - "on benefits"
+      - "choose between"
+    force_type: financial_hardship
+    min_urgency: high
+    requires_human_review: true
+
+  - id: vulnerability_indicator
+    description: "Possible vulnerable customer — requires human judgement"
+    phrases:
+      - "bereavement"
+      - "passed away"
+      - "in hospital"
+      - "terminal"
+      - "mental health"
+      - "disability"
+      - "carer"
+    min_urgency: critical
+    requires_human_review: true
+
+  - id: regulatory_escalation
+    description: "Customer invokes a regulator, ombudsman or legal action"
+    phrases:
+      - "ombudsman"
+      - "financial conduct authority"
+      - "regulator"
+      - "legal action"
+      - "my solicitor"
+      - "take you to court"
+      - "small claims"
+    min_urgency: critical
+    requires_human_review: true
+
+  - id: complaint_language
+    description: "Explicit complaint wording triggers formal complaint handling"
+    phrases:
+      - "formal complaint"
+      - "wish to complain"
+      - "unacceptable"
+    min_urgency: high
+
+# ---------------------------------------------------------------------------
+# Branches
+#
+# Each branch runs its steps in order. Steps referencing `from_sla` inherit
+# the timing implied by the classified urgency, so a critical service request
+# and a low-urgency one take the same path with different clocks.
+# ---------------------------------------------------------------------------
+branches:
+
+  billing_dispute:
+    label: "Billing dispute"
+    route_to: "Disputes Team"
+    senior_route_to: "Disputes Team — Senior Handler"
+    escalate_to_senior_at_urgency: high
+    steps:
+      - action: generate_response
+        template: dispute_acknowledgement
+        summary: "Draft acknowledgement confirming the disputed item is under review"
+      - action: suppress_collections
+        summary: "Apply collections hold for the disputed amount while investigation is open"
+        reason: "Dispute open — collections activity suspended per policy"
+      - action: route_to_team
+        summary: "Route to disputes queue with extracted account reference"
+      - action: set_follow_up
+        offset: from_sla
+        summary: "Follow-up reminder set against the urgency SLA"
+      - action: log_outcome
+        status: awaiting_human
+
+  general_enquiry:
+    label: "General enquiry"
+    route_to: "Self-service / Tier 1"
+    escalate_to_senior_at_urgency: critical
+    steps:
+      - action: generate_response
+        template: kb_answer
+        grounded: true
+        summary: "Draft answer grounded in the knowledge base, with source cited"
+      - action: log_outcome
+        status: auto_resolved
+      - action: set_follow_up
+        offset: from_sla
+        conditional_on_urgency: [high, critical]
+        summary: "Follow-up only raised when urgency is elevated"
+
+  service_request:
+    label: "Service request"
+    route_to: "Servicing Operations"
+    senior_route_to: "Servicing Operations — Team Lead"
+    escalate_to_senior_at_urgency: critical
+    steps:
+      - action: generate_response
+        template: service_confirmation
+        summary: "Draft confirmation restating the requested action and expected timeline"
+      - action: route_to_team
+        summary: "Route to servicing with extracted entities attached"
+      - action: start_sla_timer
+        offset: from_sla
+        summary: "SLA clock started against the classified urgency"
+      - action: set_follow_up
+        offset: from_sla
+        summary: "Follow-up task raised for the assigned team"
+      - action: log_outcome
+        status: awaiting_human
+
+  financial_hardship:
+    label: "Financial hardship"
+    route_to: "Customer Support — Hardship Team"
+    senior_route_to: "Customer Support — Hardship Specialist"
+    escalate_to_senior_at_urgency: high
+    # This branch never auto-resolves. The system's job here is to stop
+    # quickly and hand to a trained human, not to be clever.
+    steps:
+      - action: pause_automation
+        summary: "All automated contact and collections activity suspended for this account"
+        reason: "Hardship disclosed — automation paused pending human assessment"
+      - action: escalate
+        summary: "Flagged for mandatory human review before any outbound contact"
+      - action: notify_supervisor
+        summary: "Hardship team supervisor alerted"
+      - action: generate_response
+        template: hardship_holding
+        summary: "Holding acknowledgement drafted — for human approval, not auto-send"
+        auto_send: false
+      - action: set_follow_up
+        offset: from_sla
+        summary: "Priority follow-up against the critical SLA"
+      - action: log_outcome
+        status: escalated
+
+  other:
+    label: "Out of scope / unclassified"
+    route_to: "Triage Queue"
+    escalate_to_senior_at_urgency: critical
+    steps:
+      - action: route_to_team
+        summary: "Routed to human triage — no automated response generated"
+      - action: log_outcome
+        status: awaiting_human
+
+# ---------------------------------------------------------------------------
+# Review queue
+# ---------------------------------------------------------------------------
+review_queue:
+  # Reviewers can change type and urgency. Every override is written to the
+  # audit store with the original model proposal preserved alongside it, which
+  # gives a labelled correction set for future tuning at zero extra cost.
+  allow_type_override: true
+  allow_urgency_override: true
+  capture_override_as_training_signal: true
