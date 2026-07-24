@@ -1,0 +1,162 @@
+{
+  "run": "corpus_dev_bulk_v2",
+  "n": 200,
+  "models": [
+    "keyword-floor",
+    "llama-3.1-8b-instant"
+  ],
+  "prompt_versions": [
+    "v2"
+  ],
+  "type_accuracy": 0.71,
+  "urgency_exact": 0.4,
+  "urgency_within_one": 0.89,
+  "branch_completion": 1.0,
+  "review_rate_as_run": 0.805,
+  "gate": {
+    "threshold": 1.0,
+    "conf_min": 0.8,
+    "conf_max": 1.0,
+    "distinct_values": [
+      0.8,
+      0.9,
+      0.95,
+      1.0
+    ],
+    "inert": false
+  },
+  "per_class": {
+    "billing_dispute": {
+      "support": 40,
+      "precision": 0.825,
+      "recall": 0.825,
+      "f1": 0.825
+    },
+    "financial_hardship": {
+      "support": 34,
+      "precision": 0.6857142857142857,
+      "recall": 0.7058823529411765,
+      "f1": 0.6956521739130436
+    },
+    "general_enquiry": {
+      "support": 44,
+      "precision": 0.6666666666666666,
+      "recall": 0.5454545454545454,
+      "f1": 0.6
+    },
+    "service_request": {
+      "support": 46,
+      "precision": 0.6,
+      "recall": 0.782608695652174,
+      "f1": 0.6792452830188679
+    },
+    "other": {
+      "support": 36,
+      "precision": 0.8620689655172413,
+      "recall": 0.6944444444444444,
+      "f1": 0.7692307692307692
+    }
+  },
+  "confusion_pairs": [
+    {
+      "true": "general_enquiry",
+      "pred": "service_request",
+      "n": 10
+    },
+    {
+      "true": "financial_hardship",
+      "pred": "service_request",
+      "n": 9
+    },
+    {
+      "true": "service_request",
+      "pred": "general_enquiry",
+      "n": 5
+    },
+    {
+      "true": "other",
+      "pred": "billing_dispute",
+      "n": 5
+    },
+    {
+      "true": "general_enquiry",
+      "pred": "financial_hardship",
+      "n": 5
+    },
+    {
+      "true": "service_request",
+      "pred": "financial_hardship",
+      "n": 4
+    }
+  ],
+  "urgency": {
+    "exact": 0.4,
+    "within_one": 0.89,
+    "over": 66,
+    "under": 54,
+    "mean_signed_error": 0.035
+  },
+  "by_source": {
+    "guardrail_override": {
+      "n": 3,
+      "type_accuracy": 1.0
+    },
+    "keyword_fallback": {
+      "n": 11,
+      "type_accuracy": 0.36363636363636365
+    },
+    "llm_primary": {
+      "n": 186,
+      "type_accuracy": 0.7258064516129032
+    }
+  },
+  "degradation_drag_points": 2.0158730158730154,
+  "calibration": {
+    "ece": 0.22089947089947087,
+    "buckets": [
+      {
+        "confidence": 0.8,
+        "n": 5,
+        "accuracy": 0.8
+      },
+      {
+        "confidence": 0.9,
+        "n": 82,
+        "accuracy": 0.6463414634146342
+      },
+      {
+        "confidence": 0.95,
+        "n": 1,
+        "accuracy": 0.0
+      },
+      {
+        "confidence": 1.0,
+        "n": 101,
+        "accuracy": 0.801980198019802
+      }
+    ]
+  },
+  "floor_accuracy": 0.42,
+  "llm_accuracy": 0.71,
+  "disagreement": {
+    "precision": 0.3697478991596639,
+    "recall": 0.8627450980392157,
+    "accuracy_on_agreement": 0.9
+  },
+  "operating_points": {
+    "confidence_only": null,
+    "combined": null,
+    "per_class": {
+      "n_auto": 33,
+      "automation": 0.165,
+      "precision": 1.0,
+      "escaped": 0,
+      "escaped_per_100": 0.0
+    }
+  },
+  "reliability": {
+    "branch_completion": 1.0,
+    "min_actions": 2,
+    "guardrail_firings": 27
+  }
+}

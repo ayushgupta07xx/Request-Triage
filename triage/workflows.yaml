@@ -97,8 +97,16 @@ guardrails:
   # hardship (income collapse, job losses, losing a home) is expressed through
   # consequence rather than vocabulary, and keyword rules cannot cover it -
   # that coverage comes from the review policy, not from this list.
+  # MEASURED EFFECT, which is not the effect it was designed for. On the dev
+  # split it fires on 20 rows, 12 of them genuinely hardship - and all 12 were
+  # already flagged by the ensemble check, so its marginal hardship-safety
+  # value is zero. What it actually does is remove ambiguous messages from
+  # automation: excluding these rows lifts auto-handled precision from 91.2%
+  # to 96.5% (errors escaping 6 -> 2 per 200). It is kept for that reason and
+  # described by that reason. A rule retained for a purpose it does not serve
+  # is worse than no rule.
   - id: hardship_possible
-    description: "Ambiguous financial-difficulty language - a human should look"
+    description: "Ambiguous financial language - correlates with hard cases; hold for review"
     phrases:
       - "struggling"
       - "in arrears"

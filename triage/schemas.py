@@ -234,9 +234,22 @@ class LLMClassification(BaseModel):
         except (TypeError, ValueError):
             return 0.0
 
-    def margin(self) -> float:
-        """Gap between the top and second label. Graded, unlike stated
-        confidence, so a threshold sweep has real operating points."""
+    def margin(self) -> Optional[float]:
+        """Gap between the top and second label, or None when the model
+        offered no runner-up.
+
+        MEASURED AND REJECTED. On prompt v2 (189 model-decided dev rows) this
+        took five distinct values, equalled confidence exactly on 54% of rows
+        because the model reported a zero-probability runner-up, and accuracy
+        across its buckets was non-monotonic. It carries no information beyond
+        stated confidence. The field is kept so the negative result stays
+        reproducible; nothing gates on it.
+
+        Returns None rather than confidence when alt_type is absent: an absent
+        second label is not a wide margin, and recording it as one would put a
+        false signal into the run files."""
+        if self.alt_type is None:
+            return None
         return max(0.0, self.confidence - self.alt_confidence)
 
 
@@ -263,8 +276,11 @@ class Classification(BaseModel):
 
     llm_proposal: Optional[LLMClassification] = None
 
-    def margin(self) -> float:
-        """Confidence gap between the acted-on label and the runner-up."""
+    def margin(self) -> Optional[float]:
+        """Gap to the runner-up label, or None when there was no runner-up.
+        See LLMClassification.margin for why this is recorded but not used."""
+        if self.alt_type is None:
+            return None
         return max(0.0, self.confidence - self.alt_confidence)
 
     def was_overridden(self) -> bool:

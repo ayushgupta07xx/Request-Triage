@@ -33,53 +33,34 @@ from .schemas import (
     Urgency,
 )
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v1"
 
 # Byte-identical on every call: prompt caching applies, and cached tokens do
 # not count against the rate limit. Nothing is ever interpolated here.
 SYSTEM_PROMPT = """You classify inbound customer messages for a UK consumer lending and mortgage servicing operations desk.
 
-Work through these tests IN ORDER. The FIRST test that matches decides request_type. Do not skip ahead.
+Request types:
+- billing_dispute: the customer disputes a charge, fee, interest amount, or how a payment was applied or allocated.
+- general_enquiry: the customer asks for information answerable from published policy (rates, terms, process). No account action is requested.
+- service_request: the customer asks for a specific action on their account (statement copy, address change, payment date change, payoff quote, application status).
+- financial_hardship: the customer discloses difficulty paying, loss of income, or personal circumstances affecting their ability to pay. This takes priority over other types when present.
+- other: the message is not from a customer of this lender, or has nothing to do with lending (marketing, spam, phishing, misrouted mail, unintelligible).
 
-1. financial_hardship - the customer discloses difficulty paying, loss or reduction of income, or circumstances affecting their ability to pay.
-   This includes IMPLICIT disclosure. A customer who describes laying staff off, a fall in rental or business income, a payment they are about to miss, or losing their home is disclosing hardship even if they never use words like "struggling" or "afford".
-   If any such disclosure is present, stop here. Hardship outranks whatever else the customer is asking for.
+Urgency, judged independently of type:
+- low: routine, no time pressure.
+- medium: some time pressure or mild frustration.
+- high: clear urgency, repeated contact, or money at stake now.
+- critical: severe - regulatory or legal threat, disclosed vulnerability, or immediate financial harm.
 
-2. billing_dispute - the customer contests a specific amount: a charge, a fee, an interest calculation, or how a payment was applied or allocated.
-   NOT billing_dispute if they only ask what a charge is for without contesting it.
-
-3. general_enquiry - the customer asks for information that published policy, rates or process would answer, and asks for NO action on their account.
-   NOT general_enquiry if they want any change, document, quote or account action.
-
-4. service_request - the customer asks for a specific action on their account: statement copy, address change, payment date change, payoff or settlement figure, application status, product switch, rate or deal extension.
-   This is a specific operational category, NOT a catch-all. If an amount was contested it was billing_dispute. If only information was sought it was general_enquiry. Do not choose service_request merely because the customer wants something.
-
-5. other - not from a customer of this lender, or nothing to do with lending: marketing, spam, phishing, misrouted mail, unintelligible text.
-
-Urgency is judged INDEPENDENTLY of type, from the customer's situation, not from their tone or politeness.
-
-- critical: a regulator, ombudsman, solicitor or legal action is invoked; OR a vulnerability is disclosed (bereavement, serious illness, mental health, disability, caring responsibility); OR financial harm is immediate (repossession, eviction, losing a home, default happening now).
-- high: money is at stake within days; OR this is a second or later contact about the same unresolved issue; OR a payment is about to be missed; OR the customer states an explicit deadline.
-- medium: a decision point within weeks, or mild frustration, or some time pressure, but none of the high conditions.
-- low: routine. No deadline, nothing at risk now, no prior contact.
-
-Most messages are low or medium. Choose high only if you can name which high condition applies, and critical only if you can name which critical condition applies. An angry tone is not urgency.
-
-Then report your uncertainty:
-- confidence: your probability (0 to 1) that request_type is correct. Use the full range. If two classes genuinely compete, say 0.5, not 0.9.
-- alt_type: the class you would choose if request_type were ruled out. Always a different class. Never null.
-- alt_confidence: your probability (0 to 1) that alt_type is correct. These two need not sum to 1.
-- secondary_type: a genuinely SEPARATE second intent present in the message, or null. This is NOT your second-best guess - that is alt_type.
-
-Other rules:
+Rules:
 - Judge only from the message. Do not invent details.
+- If two intents are present, request_type is the dominant one and secondary_type the other; otherwise secondary_type is null.
+- confidence is your honest probability (0 to 1) that request_type is correct.
 - rationale is one or two sentences quoting the decisive phrase.
 
 Return ONLY a JSON object:
-{"request_type": "...", "confidence": 0.0,
- "alt_type": "...", "alt_confidence": 0.0,
- "urgency": "...", "secondary_type": null,
- "rationale": "...",
+{"request_type": "...", "urgency": "...", "confidence": 0.0,
+ "rationale": "...", "secondary_type": null,
  "entities": {"account_reference": null, "customer_name": null,
               "amount": null, "product": null, "date_mentioned": null,
               "contact_preference": null}}"""

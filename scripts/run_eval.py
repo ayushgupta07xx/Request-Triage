@@ -546,10 +546,12 @@ def section_sweeps(
         else:
             emit(
                 f"> **No gate on today's signals reaches {target:.0%} precision.** "
-                "The confidence scalar is too coarse to separate further. The fix is "
-                "a better uncertainty signal, not a different cut point: emit a "
-                "ranked top-2 and gate on the margin (p1 - p2), which also supplies "
-                "the secondary_type field the multi-intent requirement needs."
+                "Stated confidence is too coarse to separate further, and "
+                "asking the model for a ranked top-2 does NOT fix it: "
+                "measured on prompt v2, the margin took five distinct "
+                "values, equalled stated confidence on 54% of rows, and "
+                "was non-monotonic in accuracy. Use an independent "
+                "signal (ensemble agreement) instead."
             )
 
     head(3, "D. Per-class confidence thresholds")
