@@ -1,0 +1,162 @@
+{
+  "run": "corpus_dev70_v1_strat",
+  "n": 60,
+  "models": [
+    "llama-3.3-70b-versatile"
+  ],
+  "prompt_versions": [
+    "v1"
+  ],
+  "type_accuracy": 0.85,
+  "urgency_exact": 0.45,
+  "urgency_within_one": 0.85,
+  "branch_completion": 1.0,
+  "review_rate_as_run": 0.85,
+  "gate": {
+    "threshold": 0.9,
+    "conf_min": 0.8,
+    "conf_max": 1.0,
+    "distinct_values": [
+      0.8,
+      0.9,
+      1.0
+    ],
+    "inert": false
+  },
+  "per_class": {
+    "billing_dispute": {
+      "support": 12,
+      "precision": 0.9090909090909091,
+      "recall": 0.8333333333333334,
+      "f1": 0.8695652173913043
+    },
+    "financial_hardship": {
+      "support": 12,
+      "precision": 0.7333333333333333,
+      "recall": 0.9166666666666666,
+      "f1": 0.8148148148148148
+    },
+    "general_enquiry": {
+      "support": 12,
+      "precision": 1.0,
+      "recall": 0.8333333333333334,
+      "f1": 0.9090909090909091
+    },
+    "service_request": {
+      "support": 12,
+      "precision": 0.6923076923076923,
+      "recall": 0.75,
+      "f1": 0.7199999999999999
+    },
+    "other": {
+      "support": 12,
+      "precision": 1.0,
+      "recall": 0.9166666666666666,
+      "f1": 0.9565217391304348
+    }
+  },
+  "confusion_pairs": [
+    {
+      "true": "service_request",
+      "pred": "financial_hardship",
+      "n": 3
+    },
+    {
+      "true": "billing_dispute",
+      "pred": "service_request",
+      "n": 2
+    },
+    {
+      "true": "other",
+      "pred": "billing_dispute",
+      "n": 1
+    },
+    {
+      "true": "general_enquiry",
+      "pred": "service_request",
+      "n": 1
+    },
+    {
+      "true": "general_enquiry",
+      "pred": "financial_hardship",
+      "n": 1
+    },
+    {
+      "true": "financial_hardship",
+      "pred": "service_request",
+      "n": 1
+    }
+  ],
+  "urgency": {
+    "exact": 0.45,
+    "within_one": 0.85,
+    "over": 9,
+    "under": 24,
+    "mean_signed_error": -0.36666666666666664
+  },
+  "by_source": {
+    "guardrail_override": {
+      "n": 1,
+      "type_accuracy": 1.0
+    },
+    "llm_primary": {
+      "n": 59,
+      "type_accuracy": 0.847457627118644
+    }
+  },
+  "calibration": {
+    "ece": 0.06333333333333338,
+    "buckets": [
+      {
+        "confidence": 0.8,
+        "n": 1,
+        "accuracy": 0.0
+      },
+      {
+        "confidence": 0.9,
+        "n": 50,
+        "accuracy": 0.84
+      },
+      {
+        "confidence": 1.0,
+        "n": 9,
+        "accuracy": 1.0
+      }
+    ]
+  },
+  "floor_accuracy": 0.35,
+  "llm_accuracy": 0.85,
+  "disagreement": {
+    "precision": 0.1388888888888889,
+    "recall": 0.5555555555555556,
+    "accuracy_on_agreement": 0.8333333333333334
+  },
+  "operating_points": {
+    "confidence_only": {
+      "n_auto": 9,
+      "automation": 0.15,
+      "precision": 1.0,
+      "escaped": 0,
+      "escaped_per_100": 0.0
+    },
+    "combined": {
+      "n_auto": 9,
+      "automation": 0.15,
+      "precision": 1.0,
+      "escaped": 0,
+      "escaped_per_100": 0.0
+    },
+    "per_class": {
+      "n_auto": 31,
+      "automation": 0.5166666666666667,
+      "precision": 1.0,
+      "escaped": 0,
+      "escaped_per_100": 0.0
+    }
+  },
+  "reliability": {
+    "branch_completion": 1.0,
+    "min_actions": 2,
+    "guardrail_firings": 8
+  }
+}
