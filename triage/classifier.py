@@ -310,7 +310,13 @@ def classify(
         review_reason = review_reason or "degraded to keyword floor"
     else:
         reasons: list[str] = []
-        if guarded.confidence < threshold and not triggers:
+        # Only a guardrail that forced a *different type* invalidates the
+        # model's stated confidence, since that confidence referred to the
+        # proposal rather than the forced type. An urgency-only trigger
+        # (e.g. complaint_language) leaves it meaningful, and must not be
+        # allowed to suppress the check -- a guardrail may never de-escalate.
+        type_forced = guarded.request_type != proposal.request_type
+        if guarded.confidence < threshold and not type_forced:
             reasons.append(
                 f"confidence {guarded.confidence:.2f} below "
                 f"threshold {threshold:.2f}"
