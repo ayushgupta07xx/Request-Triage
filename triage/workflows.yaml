@@ -46,7 +46,10 @@ defaults:
 #     general_enquiry (88%) and service_request (56%) fail on merit.
 #     'other' scored 11/11 but fails the n>=15 bar and stays human-gated -
 #     the bar exists precisely to resist small-sample perfection.
-#   8B ensemble: floor agreement AND conf >= 1.00 -> 49 auto @ 95.9% (dev-200).
+#   8B ensemble: floor agreement AND conf >= 1.00 -> 44 auto @ 100.0%
+#     precision, 0 errors escaped (dev-200, current config incl. tier-2
+#     guardrail). Without tier-2 the same gate gives 49 auto @ 95.9%:
+#     the extra exclusions cost 5 auto rows and remove 2 escaped errors.
 # financial_hardship may never appear in a class gate; the loader rejects it.
 auto_policies:
   "llama-3.3-70b-versatile":
