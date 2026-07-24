@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 import time
 from pathlib import Path
@@ -67,7 +68,31 @@ def main() -> None:
 
     examples = _load_examples(src, args.split)
     if args.limit:
-        examples = examples[: args.limit]
+        # Stratified, seeded slice. The corpus file is ordered by class, so
+        # plain head-truncation returns a one- or two-class subset - the
+        # first 60-row "transfer check" measured only billing_dispute and
+        # general_enquiry because of exactly this. Round-robin across
+        # classes (shuffled within each, fixed seed) keeps every class
+        # represented and the slice reproducible.
+        rng = random.Random(1509)
+        by_class: dict[str, list] = {}
+        for ex in examples:
+            by_class.setdefault(ex.true_type.value, []).append(ex)
+        for grp in by_class.values():
+            rng.shuffle(grp)
+        picked = []
+        classes = sorted(by_class)
+        i = 0
+        while len(picked) < args.limit and any(by_class.values()):
+            grp = by_class[classes[i % len(classes)]]
+            if grp:
+                picked.append(grp.pop())
+            i += 1
+        examples = picked
+        mix = {}
+        for ex in examples:
+            mix[ex.true_type.value] = mix.get(ex.true_type.value, 0) + 1
+        print(f"stratified slice of {len(examples)}: {mix}")
 
     done: set[str] = set()
     if out_path.exists():
