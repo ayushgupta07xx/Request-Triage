@@ -263,7 +263,9 @@ def classify(
     threshold: Optional[float] = None,
 ) -> Classification:
     """IncomingRequest -> final Classification, via model + guardrails + gate."""
-    threshold = cfg.confidence_threshold if threshold is None else threshold
+    # `threshold` stays in the signature for caller compatibility,
+    # but gating reads cfg.auto_policies now; see the review block.
+    _ = threshold
 
     proposal: Optional[LLMClassification] = None
     source = DecisionSource.KEYWORD_FALLBACK
@@ -323,25 +325,14 @@ def classify(
             if gr["id"] in triggers and gr.get("requires_human_review")
         ]
         reasons.append("guardrail: " + ", ".join(review_triggers))
+
     if source == DecisionSource.KEYWORD_FALLBACK:
         reasons.append("degraded to keyword floor")
     else:
-        # Only a guardrail that forced a *different type* invalidates the
-        # model's stated confidence, since that confidence referred to the
-        # proposal rather than the forced type. An urgency-only trigger
-        # (e.g. complaint_language) leaves it meaningful, and must not be
-        # allowed to suppress the check -- a guardrail may never de-escalate.
-        type_forced = guarded.request_type != proposal.request_type
-        if guarded.confidence < threshold and not type_forced:
-            reasons.append(
-                f"confidence {guarded.confidence:.2f} below "
-                f"threshold {threshold:.2f}"
-            )
-        if floor_view is not None and floor_view.request_type != guarded.request_type:
-            reasons.append(
-                "ensemble disagreement: keyword floor read this as "
-                + floor_view.request_type.value
-            )
+        # Hardship asymmetry, ALL tiers: any second opinion - the floor's
+        # independent read or the model's own secondary intent - naming
+        # hardship blocks autonomy. Flagging costs an associate minutes;
+        # a missed disclosure is a regulatory and human failure.
         second_opinions = {guarded.secondary_type}
         if floor_view is not None:
             second_opinions.add(floor_view.request_type)
@@ -350,10 +341,40 @@ def classify(
             and RequestType.FINANCIAL_HARDSHIP in second_opinions
         ):
             reasons.append("possible hardship signal in a second opinion")
-    # Every reason is recorded, not just the first. The audit trail has to
-    # answer "why did this stop" completely: a case held for three independent
-    # reasons is a different case from one held on a borderline threshold, and
-    # a reviewer working the queue needs to see which.
+
+        # Model-specific auto-gate. Every uncertainty signal we measured is
+        # a property of the (model, prompt) pair: the ensemble check is
+        # load-bearing on 8B and mostly noise on 70B, whose calibrated
+        # confidence supports per-class gates instead. Derivations live as
+        # comments on auto_policies in workflows.yaml.
+        policy = cfg.auto_policy_for(model_name)
+        if policy is None:
+            reasons.append(f"no auto-handling policy derived for model {model_name!r}")
+        elif policy["kind"] == "per_class":
+            gate = policy["class_thresholds"].get(guarded.request_type)
+            if gate is None:
+                reasons.append(
+                    f"class {guarded.request_type.value} has no derived "
+                    f"auto-gate for {model_name}"
+                )
+            elif guarded.confidence < gate:
+                reasons.append(
+                    f"confidence {guarded.confidence:.2f} below class "
+                    f"gate {gate:.2f}"
+                )
+        else:  # ensemble
+            gate = policy["threshold"]
+            if floor_view is None or floor_view.request_type != guarded.request_type:
+                fv = floor_view.request_type.value if floor_view else "unavailable"
+                reasons.append(
+                    "ensemble disagreement: keyword floor read this as " + fv
+                )
+            if guarded.confidence < gate:
+                reasons.append(
+                    f"confidence {guarded.confidence:.2f} below ensemble "
+                    f"gate {gate:.2f}"
+                )
+
     requires_review = bool(reasons)
     review_reason = "; ".join(reasons) if reasons else None
 

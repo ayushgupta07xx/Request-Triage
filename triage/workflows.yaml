@@ -17,16 +17,9 @@ context:
   persona: "Tier-1 operations associate working a shared inbox queue"
 
 defaults:
-  # Derived, not guessed: swept offline over cached dev runs by
-  # scripts/run_eval.py; full report in docs/eval/. Prompt v1's stated
-  # confidence takes only three values (0.80, 0.90, 1.00), so the sweep has
-  # three usable operating points. Requiring 1.00 AND ensemble agreement gives
-  # 24.5% automation at 95.9% auto-handled precision (2 wrong actions per 200);
-  # relaxing to 0.90 gives 34.0% at 91.2% (6 per 200). The >=95% precision bar
-  # selects 1.00. Hardship coverage is 34/34 either way, so the extra strictness
-  # buys general precision, not safety.
-  # This is an operating point, not a property of the model: re-derive it after
-  # every prompt version.
+  # Legacy global threshold, superseded by auto_policies below.
+  # Retained only so the offline eval's gate-status section has a
+  # reference value to report against; gating no longer reads it.
   confidence_threshold: 1.00
   # Identical message from the same sender inside this window is suppressed
   # rather than re-executed. Prevents duplicate acknowledgements and double
@@ -35,6 +28,35 @@ defaults:
   # Multi-intent: when a secondary type is detected we act on the primary and
   # raise a flag rather than silently dropping the second intent.
   flag_secondary_intent: true
+
+# ---------------------------------------------------------------------------
+# Auto-handling policies, per deciding model.
+#
+# Every uncertainty signal we measured is a property of the (model, prompt)
+# pair, not of the architecture. On the 8B tier, keyword-floor agreement
+# caught 88% of model errors on dev and is load-bearing. On 70B the same
+# check flags 67 of 104 rows to catch 11 errors, while stated confidence is
+# well calibrated (ECE 0.063) and per-class gates separate cleanly. So each
+# model carries its own derived gate, and a model with no entry here never
+# auto-handles anything: unknown models get humans, not benefit of the doubt.
+#
+# Derivations (docs/eval/ + scripts/diag/pool_70b.py; pre-registered bar:
+# precision >= 95% point estimate AND n >= 15):
+#   70B per-class: billing_dispute 31/31 correct at conf >= 0.90 (n=40).
+#     general_enquiry (88%) and service_request (56%) fail on merit.
+#     'other' scored 11/11 but fails the n>=15 bar and stays human-gated -
+#     the bar exists precisely to resist small-sample perfection.
+#   8B ensemble: floor agreement AND conf >= 1.00 -> 49 auto @ 95.9% (dev-200).
+# financial_hardship may never appear in a class gate; the loader rejects it.
+auto_policies:
+  "llama-3.3-70b-versatile":
+    kind: per_class
+    class_thresholds:
+      billing_dispute: 0.90
+  "llama-3.1-8b-instant":
+    kind: ensemble
+    threshold: 1.00
+
 
 # Urgency is classified independently of type and modulates behaviour inside
 # whichever branch is selected.

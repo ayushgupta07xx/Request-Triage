@@ -41,6 +41,7 @@ class WorkflowConfig:
         self.guardrails: list[dict[str, Any]] = raw.get("guardrails", [])
         self.branches: dict[RequestType, dict[str, Any]] = {}
         self.review_queue: dict[str, Any] = raw.get("review_queue", {})
+        self.auto_policies: dict[str, dict[str, Any]] = {}
         self._validate()
 
     # -- validation -------------------------------------------------------
@@ -119,6 +120,56 @@ class WorkflowConfig:
                 + ", ".join(sorted(t.value for t in uncovered))
             )
 
+        for model, pol in (self.raw.get("auto_policies") or {}).items():
+            kind = (pol or {}).get("kind")
+            if kind not in ("per_class", "ensemble"):
+                errors.append(f"auto_policies[{model!r}]: unknown kind {kind!r}")
+                continue
+            parsed: dict[str, Any] = {"kind": kind}
+            if kind == "per_class":
+                gates: dict[RequestType, float] = {}
+                for cls, t in (pol.get("class_thresholds") or {}).items():
+                    try:
+                        rt = RequestType(cls)
+                    except ValueError:
+                        errors.append(
+                            f"auto_policies[{model!r}]: unknown class {cls!r}"
+                        )
+                        continue
+                    if rt == RequestType.FINANCIAL_HARDSHIP:
+                        errors.append(
+                            f"auto_policies[{model!r}]: financial_hardship may "
+                            "never auto-handle - the branch pauses automation "
+                            "by design"
+                        )
+                        continue
+                    try:
+                        tv = float(t)
+                    except (TypeError, ValueError):
+                        tv = -1.0
+                    if not 0.0 <= tv <= 1.0:
+                        errors.append(
+                            f"auto_policies[{model!r}].{cls}: threshold {t!r} "
+                            "not in [0, 1]"
+                        )
+                        continue
+                    gates[rt] = tv
+                if not gates:
+                    errors.append(
+                        f"auto_policies[{model!r}]: per_class policy with no "
+                        "valid class_thresholds"
+                    )
+                parsed["class_thresholds"] = gates
+            else:
+                try:
+                    tv = float(pol.get("threshold", 1.0))
+                except (TypeError, ValueError):
+                    tv = -1.0
+                if not 0.0 <= tv <= 1.0:
+                    errors.append(f"auto_policies[{model!r}]: threshold not in [0, 1]")
+                parsed["threshold"] = tv
+            self.auto_policies[model] = parsed
+
         if errors:
             raise ConfigError(
                 "workflows.yaml failed validation:\n  - " + "\n  - ".join(errors)
@@ -133,6 +184,16 @@ class WorkflowConfig:
     @property
     def duplicate_window(self) -> timedelta:
         return timedelta(minutes=int(self.defaults.get("duplicate_window_minutes", 60)))
+
+    def auto_policy_for(self, model_name: Optional[str]) -> Optional[dict[str, Any]]:
+        """The auto-handling gate derived for this model, or None.
+
+        None means the model has no derived operating point, and the caller
+        must route to human review. Absence of evidence is a review reason.
+        """
+        if not model_name:
+            return None
+        return self.auto_policies.get(model_name)
 
     def branch_for(self, rt: RequestType) -> dict[str, Any]:
         return self.branches[rt]
