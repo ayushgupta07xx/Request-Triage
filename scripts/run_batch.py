@@ -56,6 +56,19 @@ def main() -> None:
     ap.add_argument("--no-llm", action="store_true", help="keyword floor only")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--name", default=None, help="run name (default: derived)")
+    ap.add_argument(
+        "--pace",
+        type=float,
+        default=0.0,
+        help="min seconds between LLM calls (0 = off); keeps a measurement "
+        "run under the per-minute token ceiling",
+    )
+    ap.add_argument(
+        "--pin",
+        action="store_true",
+        help="measurement mode: pin to the tier primary model, wait out TPM "
+        "congestion, never silently degrade to another model",
+    )
     args = ap.parse_args()
 
     src = Path(args.file)
@@ -103,7 +116,7 @@ def main() -> None:
         print(f"resuming: {len(done)} example(s) already in {out_path.name}")
 
     cfg = load_config()
-    waterfall = None if args.no_llm else build_waterfall(Tier(args.tier))
+    waterfall = None if args.no_llm else build_waterfall(Tier(args.tier), pin=args.pin)
     if waterfall:
         print("waterfall:", describe_waterfall(waterfall))
     store = CaseStore(db_path)
@@ -112,9 +125,16 @@ def main() -> None:
     print(f"{len(todo)} to process, {len(done)} cached -> {out_path.name}")
 
     t0 = time.perf_counter()
+    tok_total = 0
     for i, ex in enumerate(todo, 1):
+        if args.pace and i > 1:
+            time.sleep(args.pace)
+        if waterfall is not None:
+            waterfall.last_usage = None
         case = process_request(ex.to_request(), cfg, store, waterfall)
         c = case.classification
+        usage = getattr(waterfall, "last_usage", None) if waterfall else None
+        tok_total += (usage or {}).get("total_tokens") or 0
         row = {
             "example_id": ex.example_id,
             "true_type": ex.true_type.value,
@@ -148,6 +168,12 @@ def main() -> None:
             "status": case.status.value,
             "branch_completed": case.completed_all_steps(),
             "n_actions": len(case.actions),
+            "usage_prompt_tokens": (usage or {}).get("prompt_tokens"),
+            "usage_completion_tokens": (usage or {}).get("completion_tokens"),
+            "usage_total_tokens": (usage or {}).get("total_tokens"),
+            "usage_cached_tokens": (
+                (usage or {}).get("prompt_tokens_details") or {}
+            ).get("cached_tokens"),
             "case_id": case.case_id,
         }
         with open(out_path, "a", encoding="utf-8") as fh:
@@ -158,6 +184,8 @@ def main() -> None:
 
     store.close()
     print(f"\ndone -> {out_path} and {db_path}")
+    if tok_total:
+        print(f"LLM tokens this run (sum usage.total_tokens): {tok_total:,}")
 
 
 if __name__ == "__main__":

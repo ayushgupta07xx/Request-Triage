@@ -55,6 +55,7 @@ class LLMResponse:
     attempts: int = 1
     degraded: bool = False
     tier: Optional[str] = None
+    usage: Optional[dict] = None
 
     def json(self) -> dict:
         """Parse the response as JSON, tolerating fenced output."""
@@ -154,6 +155,7 @@ class GroqProvider(Provider):
             provider=self.name,
             model=self.model,
             latency_ms=int((time.perf_counter() - started) * 1000),
+            usage=body.get("usage") if isinstance(body.get("usage"), dict) else None,
         )
 
     def _absorb_headers(self, headers) -> None:
@@ -220,6 +222,7 @@ class Waterfall:
     providers: list[Provider] = field(default_factory=list)
     max_retries: int = 3
     max_wait_seconds: float = 25.0
+    last_usage: Optional[dict] = None
 
     def complete(
         self, system: str, user: str, json_mode: bool = True, temperature: float = 0.0
@@ -236,6 +239,7 @@ class Waterfall:
                     )
                     resp.attempts = attempt
                     resp.degraded = index > 0
+                    self.last_usage = resp.usage
                     return resp
                 except httpx.HTTPStatusError as exc:
                     status = exc.response.status_code if exc.response else 0
@@ -269,8 +273,18 @@ class Waterfall:
         return min(2.0**attempt, 16.0) + random.uniform(0, 0.75)
 
 
-def build_waterfall(tier: Tier = Tier.BULK) -> Waterfall:
-    """Assemble the waterfall for a tier from environment configuration."""
+def build_waterfall(tier: Tier = Tier.BULK, pin: bool = False) -> Waterfall:
+    """Assemble the waterfall for a tier from environment configuration.
+
+    pin=True builds a MEASUREMENT-mode waterfall: the tier's primary model
+    only, with generous patience so it waits out per-minute (TPM) congestion
+    instead of degrading to a different model. Production degrades to stay
+    fast; a measurement run must not, because a silent same-family swap (8B
+    answering for 70B) would masquerade as an LLM decision and contaminate
+    provenance. Genuine daily exhaustion (reset hint in hours, above the wait
+    cap) still raises -> the caller falls to the keyword floor, a VISIBLE
+    non-LLM row we can see and re-run, never a hidden substitution.
+    """
     groq_key = os.getenv("GROQ_API_KEY", "")
     gemini_key = os.getenv("GEMINI_API_KEY", "")
 
@@ -280,6 +294,13 @@ def build_waterfall(tier: Tier = Tier.BULK) -> Waterfall:
     else:
         primary = os.getenv("GROQ_MODEL_QUALITY", "llama-3.3-70b-versatile")
         secondary = os.getenv("GROQ_MODEL_BULK", "llama-3.1-8b-instant")
+
+    if pin:
+        return Waterfall(
+            providers=[GroqProvider(primary, groq_key)],
+            max_retries=6,
+            max_wait_seconds=70.0,
+        )
 
     providers: list[Provider] = [
         GroqProvider(primary, groq_key),
