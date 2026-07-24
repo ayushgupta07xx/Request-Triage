@@ -281,8 +281,73 @@ mitigation.
 
 SQLite → Postgres or Turso; batch runner → queue workers with retry semantics;
 per-class model routing (billing is cheap and clean at 8B, hardship is not);
-prompt-cache economics start dominating token spend; and the review queue needs
+prompt-cache economics begin to matter, but only if the workload moves to a cache-supported model family — the current llama models cache nothing (see #16); and the review queue needs
 real workflow tooling, since at a 70% review rate the bottleneck is human
 capacity, not model throughput. The honest answer to "why is automation only
 ~30%" is that the precision bar was set at 95% and this is what 95% costs
 today — raising it means better perception, not a looser gate.
+
+---
+## 16. Measuring on a rate-limited free tier — a contamination caught, then instrumented
+
+The held-out test split was run once on 70B and the run was **voided before a
+single prediction was scored**, because 36 of its 100 rows had been answered by
+the wrong model. This entry records why, and the four findings the failure
+forced out — each measured against the vendor, not assumed.
+
+**The daily reset is a rolling window, not a clock.** The build plan assumed the
+Groq daily bucket reset at a fixed 05:30 IST (midnight UTC). It does not. A
+one-request probe returned `x-ratelimit-remaining-requests: 942` with
+`x-ratelimit-reset-requests: 1h23m31s`; 1000 − 942 = 58 requests spent, and
+58 × 86.4s (one request's share of a 1000/day allowance) = 1h23m31s exactly.
+The allowance refills continuously, ~one request every 86 seconds, confirmed on
+our own headers. **Consequence.** Runs are scheduled by measured headroom, never
+by wall-clock.
+
+**Prompt caching never applied.** The classifier and LLM layer both carried a
+comment: the system prompt is byte-identical so caching applies and cached
+tokens do not count against the limit. Groq caches only the gpt-oss family; the
+llama models this system uses are unsupported. Measured on-key
+(`scripts/diag/caching_probe.py`): the identical system prompt sent twice
+returned `cached_tokens: None` both times, at 602 total tokens per call. Every
+call pays full prompt cost. **Decision.** The prompt stays byte-identical — for
+determinism, and so the benefit lands automatically if the workload ever moves
+to a cache-supported model — but the rate-limit claim is withdrawn, and the
+scale note in #15 corrected: caching cannot dominate token spend on a model that
+does not cache.
+
+**The run degraded because production behaviour is wrong for measurement.** With
+no caching each call costs ~602 tokens; an unpaced runner issues calls in bursts
+toward the 30 requests-per-minute ceiling, and 30 × 602 ≈ 18,000 tokens crosses
+the 12,000 tokens-per-minute limit inside a rolling minute. On the resulting 429
+the waterfall did exactly what production requires — it degraded to the 8B model
+to keep answering fast — and 35 rows were classified by 8B, one by the keyword
+floor. An operations floor cannot block a waiting customer, so fast-but-8B beats
+slow-but-70B there. A measurement run has the opposite objective: a silent
+same-family substitution masquerades as a 70B decision and contaminates the
+headline. **Decision.** A `--pin` mode pins to the target tier alone and waits
+out per-minute congestion; if the tier genuinely cannot serve it raises rather
+than substitutes, surfacing a *visible* keyword-floor row we can see and re-run,
+never a hidden 8B swap. Same waterfall, one flag, inverted objective — production
+still degrades by default.
+
+**The void was pre-registered and accuracy-blind.** The criterion for discarding
+— was the row served by 70B — is a property of provenance, decided and written
+down before the run, with no reference to whether the predictions were right.
+Discarding therefore introduced no accuracy information into any decision: it
+replaced a broken instrument, it did not fish for a better number. The split is
+described honestly as **executed once, scored never**; the voided run files are
+kept on disk as evidence, not deleted.
+
+**We were blind to the daily token pool, and fixed it.** The rate-limit headers
+expose remaining requests-per-day and tokens-per-*minute*, but not
+tokens-per-*day* — the one number that actually bounded the run. Flying on
+inference, the day's 70B token pool was over-run (the console later showed 122.7K
+against a 100K ceiling; earlier runs had not yet aged out of the rolling window).
+Two changes close this: every call now records its `usage` block into the run
+row, ending token-cost-by-inference; and a pre-flight guard
+(`scripts/diag/run_guard.py`) refuses to start a run whose measured cost will not
+fit the pool with margin, with a resume-scrub that drops non-70B rows so a re-run
+re-attempts only the failures. **Consequence.** The failure that produced this
+entry cannot recur silently — the tooling now measures what was previously
+assumed.
