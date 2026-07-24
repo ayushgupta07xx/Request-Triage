@@ -3,9 +3,11 @@ Classification pipeline: model proposes, guardrails and the gate dispose.
 
 Order of authority, highest first:
   1. Deterministic guardrails (may only escalate, never de-escalate)
-  2. The confidence gate (below threshold -> human review, not action)
+  2. The review policy: ensemble disagreement, low confidence, or a hardship
+     signal in any second opinion -> human review, never autonomous action
   3. The model's proposal (LLM via the provider waterfall)
-  4. The keyword floor (no model available at all)
+  4. The keyword floor (runs as a second opinion on every request; sole
+     decider only when no model is available, and then never auto-resolves)
 
 The keyword floor never auto-resolves: anything it classifies is marked for
 human review. A degraded system that quietly acts with less information is
@@ -283,6 +285,16 @@ def classify(
 
     guarded, triggers, force_review = apply_guardrails(req, proposal, cfg)
 
+    # The floor runs as a second opinion on every model-decided request, not
+    # only when the model is absent. Agreement between two independently
+    # constructed systems is the cheapest uncertainty signal available
+    # (dev, prompt v1: 91.8% type accuracy when they agree, 39.3% when they
+    # disagree) and the model's stated confidence is too coarse to gate on
+    # alone (three distinct values, all above any sane threshold).
+    floor_view: Optional[LLMClassification] = None
+    if source != DecisionSource.KEYWORD_FALLBACK:
+        floor_view = keyword_classify(req)
+
     if triggers and (
         guarded.request_type != proposal.request_type
         or guarded.urgency != proposal.urgency
@@ -296,11 +308,29 @@ def classify(
     if source == DecisionSource.KEYWORD_FALLBACK:
         requires_review = True
         review_reason = review_reason or "degraded to keyword floor"
-    elif guarded.confidence < threshold and not triggers:
-        requires_review = True
-        review_reason = (
-            f"confidence {guarded.confidence:.2f} below threshold {threshold:.2f}"
-        )
+    else:
+        reasons: list[str] = []
+        if guarded.confidence < threshold and not triggers:
+            reasons.append(
+                f"confidence {guarded.confidence:.2f} below "
+                f"threshold {threshold:.2f}"
+            )
+        if floor_view is not None and floor_view.request_type != guarded.request_type:
+            reasons.append(
+                "ensemble disagreement: keyword floor read this as "
+                + floor_view.request_type.value
+            )
+        second_opinions = {guarded.secondary_type}
+        if floor_view is not None:
+            second_opinions.add(floor_view.request_type)
+        if (
+            guarded.request_type != RequestType.FINANCIAL_HARDSHIP
+            and RequestType.FINANCIAL_HARDSHIP in second_opinions
+        ):
+            reasons.append("possible hardship signal in a second opinion")
+        if reasons:
+            requires_review = True
+            review_reason = review_reason or "; ".join(reasons)
 
     return Classification(
         request_type=guarded.request_type,
