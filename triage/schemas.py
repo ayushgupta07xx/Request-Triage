@@ -1,5 +1,5 @@
 """
-Core data contracts for Switchboard.
+Core data contracts for the request triage system.
 
 Design note (defend this in review):
 The model's output and the system's decision are deliberately separate types.

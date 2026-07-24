@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Switchboard remediation configuration
+# Remediation configuration
 #
 # Every branch, SLA, routing target and guardrail lives here rather than in
 # Python. The engine interprets this file; it does not encode any of it.
