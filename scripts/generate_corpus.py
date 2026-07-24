@@ -242,7 +242,14 @@ def _gemini_waterfall() -> Waterfall:
             "holdout generation needs GEMINI_MODEL and GEMINI_API_KEY in .env; "
             "verify the model string against the API before using it"
         )
-    return Waterfall(providers=[GeminiProvider(model, key)])
+    # Generation has no keyword floor beneath it and no latency budget, so
+    # unlike the classification path it should WAIT OUT a rate limit rather
+    # than abandon the provider. Same waterfall, different job.
+    return Waterfall(
+        providers=[GeminiProvider(model, key)],
+        max_retries=5,
+        max_wait_seconds=120,
+    )
 
 
 # Byte-identical on every call so prompt caching applies. Nothing is
