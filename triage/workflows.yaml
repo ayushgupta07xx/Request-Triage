@@ -17,9 +17,17 @@ context:
   persona: "Tier-1 operations associate working a shared inbox queue"
 
 defaults:
-  # Below this confidence, the system stops and asks a human rather than
-  # acting. Tuned on the validation split, not guessed — see docs/evaluation.md
-  confidence_threshold: 0.72
+  # Derived, not guessed: swept offline over cached dev runs by
+  # scripts/run_eval.py; full report in docs/eval/. Prompt v1's stated
+  # confidence takes only three values (0.80, 0.90, 1.00), so the sweep has
+  # three usable operating points. Requiring 1.00 AND ensemble agreement gives
+  # 24.5% automation at 95.9% auto-handled precision (2 wrong actions per 200);
+  # relaxing to 0.90 gives 34.0% at 91.2% (6 per 200). The >=95% precision bar
+  # selects 1.00. Hardship coverage is 34/34 either way, so the extra strictness
+  # buys general precision, not safety.
+  # This is an operating point, not a property of the model: re-derive it after
+  # every prompt version.
+  confidence_threshold: 1.00
   # Identical message from the same sender inside this window is suppressed
   # rather than re-executed. Prevents duplicate acknowledgements and double
   # routing when a customer resends or a mail client retries.
@@ -48,8 +56,11 @@ urgency_sla_minutes:
 # close, so the system is deliberately biased toward caution.
 # ---------------------------------------------------------------------------
 guardrails:
+  # Tier 1 - explicit distress idioms. Strong evidence, strongest response:
+  # force the hardship branch, raise urgency, demand human review.
+  # Measured on the dev split (200 examples, 34 hardship): zero false positives.
   - id: hardship_disclosure
-    description: "Customer signals inability to pay or financial distress"
+    description: "Customer explicitly signals inability to pay or financial distress"
     phrases:
       - "can't afford"
       - "cannot afford"
@@ -60,9 +71,41 @@ guardrails:
       - "no income"
       - "on benefits"
       - "choose between"
+      - "about to miss"
+      - "miss my next payment"
+      - "drop in income"
+      - "loss of income"
+      - "can't keep up"
+      - "cannot keep up"
+      - "unable to pay"
+      - "difficulty paying"
     force_type: financial_hardship
     min_urgency: high
     requires_human_review: true
+
+  # Tier 2 - ambiguous financial language. Weak evidence, weakest response:
+  # flag for a human and change nothing else. Deliberately does NOT force the
+  # hardship branch or raise urgency - pausing collections on a customer who
+  # never disclosed distress is an operational cost, not a free safety win.
+  #
+  # Rejected after measurement on dev (hardship hits / false positives):
+  #   "arrears"        4 / 19  - routine vocabulary in billing and servicing
+  #   "overdue"        1 /  4  - same
+  #   "fallen behind"  0 /  1  - no yield
+  # Phrases lifted verbatim from individual failing examples were also
+  # rejected: they inflate measured coverage without generalising. Implicit
+  # hardship (income collapse, job losses, losing a home) is expressed through
+  # consequence rather than vocabulary, and keyword rules cannot cover it -
+  # that coverage comes from the review policy, not from this list.
+  - id: hardship_possible
+    description: "Ambiguous financial-difficulty language - a human should look"
+    phrases:
+      - "struggling"
+      - "in arrears"
+      - "payment holiday"
+      - "tough times"
+    requires_human_review: true
+
 
   - id: vulnerability_indicator
     description: "Possible vulnerable customer — requires human judgement"

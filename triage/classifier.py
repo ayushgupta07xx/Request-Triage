@@ -303,13 +303,17 @@ def classify(
     else:
         final_source = source
 
-    requires_review = force_review
-    review_reason = "guardrail" if force_review else None
+    reasons: list[str] = []
+    if force_review:
+        review_triggers = [
+            gr["id"]
+            for gr in cfg.guardrails
+            if gr["id"] in triggers and gr.get("requires_human_review")
+        ]
+        reasons.append("guardrail: " + ", ".join(review_triggers))
     if source == DecisionSource.KEYWORD_FALLBACK:
-        requires_review = True
-        review_reason = review_reason or "degraded to keyword floor"
+        reasons.append("degraded to keyword floor")
     else:
-        reasons: list[str] = []
         # Only a guardrail that forced a *different type* invalidates the
         # model's stated confidence, since that confidence referred to the
         # proposal rather than the forced type. An urgency-only trigger
@@ -334,9 +338,12 @@ def classify(
             and RequestType.FINANCIAL_HARDSHIP in second_opinions
         ):
             reasons.append("possible hardship signal in a second opinion")
-        if reasons:
-            requires_review = True
-            review_reason = review_reason or "; ".join(reasons)
+    # Every reason is recorded, not just the first. The audit trail has to
+    # answer "why did this stop" completely: a case held for three independent
+    # reasons is a different case from one held on a borderline threshold, and
+    # a reviewer working the queue needs to see which.
+    requires_review = bool(reasons)
+    review_reason = "; ".join(reasons) if reasons else None
 
     return Classification(
         request_type=guarded.request_type,
