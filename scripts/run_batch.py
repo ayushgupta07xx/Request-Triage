@@ -101,6 +101,16 @@ def main() -> None:
             "decision_source": c.decision_source.value,
             "guardrail_triggers": c.guardrail_triggers,
             "requires_review": c.requires_human_review,
+            "review_reason": c.review_reason,
+            "secondary_type": c.secondary_type.value if c.secondary_type else None,
+            "alt_type": c.alt_type.value if c.alt_type else None,
+            "alt_confidence": c.alt_confidence,
+            "margin": c.margin(),
+            "proposal_secondary": (
+                c.llm_proposal.secondary_type.value
+                if c.llm_proposal and c.llm_proposal.secondary_type
+                else None
+            ),
             "proposal_type": c.llm_proposal.request_type.value
             if c.llm_proposal
             else None,

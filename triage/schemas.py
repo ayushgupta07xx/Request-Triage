@@ -193,12 +193,51 @@ class LLMClassification(BaseModel):
     entities: ExtractedEntities = Field(default_factory=ExtractedEntities)
     secondary_type: Optional[RequestType] = None
 
+    # Prompt v2. The model's second-best label and its probability.
+    #
+    # Stated confidence took only three distinct values across 190 dev rows
+    # (0.80, 0.90, 1.00), which is too coarse to express an operating point:
+    # a sweep over it has three usable positions and nothing in between. The
+    # margin between the top two labels is graded, so it can be swept.
+    #
+    # alt_type answers "what would you say if request_type were ruled out".
+    # secondary_type answers "is a second, separate intent also present".
+    # These are different questions and must not share a field: a
+    # single-intent message can be a coin flip between two labels, and a
+    # genuinely multi-intent message can be certain about both of them.
+    alt_type: Optional[RequestType] = None
+    alt_confidence: float = 0.0
+
     @field_validator("secondary_type", mode="after")
     @classmethod
     def _secondary_must_differ(cls, v, info):
         if v is not None and v == info.data.get("request_type"):
             return None
         return v
+
+    @field_validator("alt_type", mode="after")
+    @classmethod
+    def _alt_must_differ(cls, v, info):
+        if v is not None and v == info.data.get("request_type"):
+            return None
+        return v
+
+    @field_validator("alt_confidence", mode="before")
+    @classmethod
+    def _clamp_alt_confidence(cls, v):
+        # Clamped rather than rejected. A malformed secondary probability is
+        # not a reason to discard an otherwise usable classification and push
+        # the row down the degradation waterfall to the keyword floor; the
+        # primary label and confidence are still trustworthy.
+        try:
+            return min(1.0, max(0.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def margin(self) -> float:
+        """Gap between the top and second label. Graded, unlike stated
+        confidence, so a threshold sweep has real operating points."""
+        return max(0.0, self.confidence - self.alt_confidence)
 
 
 class Classification(BaseModel):
@@ -210,6 +249,8 @@ class Classification(BaseModel):
     rationale: str
     entities: ExtractedEntities = Field(default_factory=ExtractedEntities)
     secondary_type: Optional[RequestType] = None
+    alt_type: Optional[RequestType] = None
+    alt_confidence: float = 0.0
 
     decision_source: DecisionSource
     guardrail_triggers: list[str] = Field(default_factory=list)
@@ -221,6 +262,10 @@ class Classification(BaseModel):
     latency_ms: Optional[int] = None
 
     llm_proposal: Optional[LLMClassification] = None
+
+    def margin(self) -> float:
+        """Confidence gap between the acted-on label and the runner-up."""
+        return max(0.0, self.confidence - self.alt_confidence)
 
     def was_overridden(self) -> bool:
         """True when the acted-on decision differs from what the model proposed."""
