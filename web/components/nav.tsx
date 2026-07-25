@@ -39,6 +39,7 @@ export default function Nav() {
   const links = [
     { href: "/desk", label: "Desk" },
     { href: "/performance", label: "Performance" },
+    { href: "/live", label: "Live" },
   ];
   return (
     <header className="sticky top-0 z-20 flex h-[64px] items-center gap-5 border-b bg-background/85 px-7 backdrop-blur">
