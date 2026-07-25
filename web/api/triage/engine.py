@@ -29,6 +29,7 @@ from .schemas import (
     Urgency,
 )
 from .store import CaseStore
+from . import kb
 
 
 def _now() -> datetime:
@@ -50,7 +51,11 @@ def _ref_line(c: Classification) -> str:
     return f" (reference {ref})" if ref else ""
 
 
-def draft_response(template: str, c: Classification) -> str:
+def draft_response(
+    template: str,
+    c: Classification,
+    kb_hit: Optional[kb.KBMatch] = None,
+) -> str:
     amount = c.entities.amount or "the amount in question"
     if template == "dispute_acknowledgement":
         return (
@@ -80,12 +85,18 @@ def draft_response(template: str, c: Classification) -> str:
             "Kind regards,\nCustomer Support"
         )
     if template == "kb_answer":
-        return (
-            f"{_greeting(c)}\n\n"
-            "Thank you for your enquiry. [Draft grounded answer - populated "
-            "from the knowledge base in the review screen.]\n\n"
-            "Kind regards,\nCustomer Operations"
-        )
+        # A grounded answer or none at all. With no matched entry there is
+        # nothing to say that we can stand behind, so the draft says so and
+        # the case will not auto-resolve.
+        if kb_hit is None:
+            return (
+                f"{_greeting(c)}\n\n"
+                "Thank you for your enquiry. We have passed it to a "
+                "colleague who will look into it and reply to you "
+                "directly.\n\n"
+                "Kind regards,\nCustomer Operations"
+            )
+        return kb.compose_answer(kb_hit, _greeting(c))
     return f"{_greeting(c)}\n\nThank you for your message.{_ref_line(c)}"
 
 
@@ -98,13 +109,17 @@ def _execute_step(
     step: dict[str, Any],
     case: CaseRecord,
     cfg: WorkflowConfig,
+    kb_hit: Optional[kb.KBMatch] = None,
 ) -> ActionResult:
     action = ActionType(step["action"])
     c = case.classification
     summary = step.get("summary", action.value)
 
     if action == ActionType.GENERATE_RESPONSE:
-        text = draft_response(step.get("template", ""), c)
+        template = step.get("template", "")
+        if template == "kb_answer" and kb_hit is None:
+            kb_hit = kb.lookup(case.request.subject, case.request.body, c.entities)
+        text = draft_response(template, c, kb_hit)
         auto_send = step.get("auto_send", True)
         return ActionResult(
             action=action,
@@ -198,10 +213,18 @@ def process_request(
         status=CaseStatus.NEW,
     )
 
+    # Grounded drafting is deterministic and costs no tokens, so the lookup
+    # runs once here and is read twice: by the draft itself, and by the gate
+    # that decides whether this case may close without a person.
+    kb_hit = kb.lookup(req.subject, req.body, c.entities)
+
     final_status = CaseStatus.AWAITING_HUMAN
+    grounding_required = False
     for step in cfg.steps_for(c.request_type, c.urgency):
+        if step.get("grounded"):
+            grounding_required = True
         try:
-            result = _execute_step(step, case, cfg)
+            result = _execute_step(step, case, cfg, kb_hit)
         except Exception as exc:  # a failing step must not kill the branch
             result = ActionResult(
                 action=ActionType(step["action"]),
@@ -221,6 +244,18 @@ def process_request(
     # enquiry that the model was unsure about still goes to a human.
     if c.requires_human_review and final_status == CaseStatus.AUTO_RESOLVED:
         final_status = CaseStatus.AWAITING_HUMAN
+
+    # A branch declaring `grounded: true` must actually have grounded its
+    # answer. No matched entry - or an ambiguous one, or a topic the
+    # knowledge base refuses to answer - hands the case to a person. The
+    # config stops being documentation and becomes an enforced contract.
+    if (
+        final_status == CaseStatus.AUTO_RESOLVED
+        and grounding_required
+        and kb_hit is None
+    ):
+        final_status = CaseStatus.AWAITING_HUMAN
+
     case.status = final_status
 
     if store is not None:
