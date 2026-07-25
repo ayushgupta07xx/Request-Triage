@@ -351,3 +351,92 @@ fit the pool with margin, with a resume-scrub that drops non-70B rows so a re-ru
 re-attempts only the failures. **Consequence.** The failure that produced this
 entry cannot recur silently — the tooling now measures what was previously
 assumed.
+
+## 17. The dashboard and the limiter measure different windows
+
+Entry #16 established that the daily allowance refills continuously rather than
+resetting on a clock, and instrumented the run guard accordingly. It left one
+instrument unquestioned: the vendor's own usage dashboard, which #16 named as
+the way to read the daily token pool the headers do not expose. That dashboard
+is measured in a different unit than the limiter enforces, and the second void
+followed from trusting it.
+
+**The reading that looked safe.** The console reported zero 70B tokens used for
+the day, against a 100,000-token ceiling. A pre-flight guard passed on headers.
+A ten-row pinned proof run returned 10/10 rows served by the target model. On
+that evidence the held-out test split was fired, and 45 of its 100 rows were
+refused.
+
+**Three signals said the refusals were quota, not congestion.** The failures
+were not scattered through the run: rows 0–53 were served, then a wall, with a
+single success at row 91. Scattered failures indicate per-row causes — a parse
+error, a content refusal, a timeout. A cliff indicates a boundary. Second, the
+refused rows returned in 164–306ms. Per-minute congestion is precisely what
+`--pin` absorbs: it waits up to 70 seconds across six retries, and the
+per-minute allowance fully recovers inside a minute. A refusal that fast, from a
+mode built to wait, is not a per-minute limit. Third, the lone success in the
+middle of the dead zone is the signature of a rolling allowance trickling back,
+not of a bucket that is simply empty.
+
+**The arithmetic that identified the window.** Our own accounting matched the
+console to three digits — 42,607 tokens recorded against 42.7K displayed — so
+the dashboard was neither stale nor wrong. It was answering a different
+question. The console reports a UTC *calendar day*. The limiter counts a
+*trailing 24 hours*. At the time of the run the enforced window reached back to
+roughly 06:00 UTC the previous day, and the previous day's 122.7K had been spent
+from 12:14 UTC onward, so none of it had aged out. The enforced total was
+approximately 165K against a 100K ceiling. Both numbers were true; only one was
+the one that bound us.
+
+**Decision.** Schedule by probe, never by dashboard. A three-row pinned probe
+costs roughly 2,000 tokens and answers the only question that matters — will the
+target tier serve right now — in under a minute. The dashboard is retained for
+post-hoc accounting, where it is accurate, and is no longer consulted for
+scheduling.
+
+**Failure is free, which inverts the retry calculus.** A refused row costs zero
+tokens: the run that lost 45 rows spent exactly the same 35,533 tokens as the 55
+it kept. This was not obvious in advance, and it changes the strategy. A resume
+attempt is not a gamble requiring a guaranteed window — it banks whatever
+succeeds and costs nothing for what does not, spending only requests-per-day,
+which is plentiful. **Consequence.** A one-shot split can be completed
+incrementally as allowance returns, across as many passes as it takes, without
+ever iterating on results: provenance is checked between passes, accuracy is
+not.
+
+
+## 18. Duplicate suppression is correct behaviour that silently voids a resume
+
+The resume path introduced in #16 drops non-70B rows from the run file so that
+a re-run re-attempts only the failures. It was tested against the file. It was
+not tested against the case store, and the store is where the system remembers
+what it has already seen.
+
+**What happened.** The scrubbed re-run reported 45 rows processed and spent zero
+tokens — the run total read 35,533 both before and after, unchanged to the
+digit. The 45 rows carried `model: None`, `latency: None`, `confidence: 1.0`,
+and a decision source of `guardrail_override` with empty guardrail triggers. The
+persisted payload named the cause outright: `Identical to recent case
+case_f5e9680c33a7; suppressed.`
+
+**Why.** Duplicate suppression runs on a content fingerprint *before* any model
+call — deliberately, so that a customer resending an email costs nothing and
+fires nothing twice. The scrub had cleaned the run file but left all 100 cases
+in the store. On resume, every re-attempted message matched its own fingerprint
+from fifty minutes earlier, inside the sixty-minute suppression window, and was
+answered from the store instead of the model.
+
+**This is the system working.** Nothing was broken: the suppression window did
+exactly what an operations floor needs it to do. The defect was in the
+measurement procedure, which assumed a run file was the whole of a run's state.
+**Decision.** The resume procedure now reconciles the store with the banked
+rows before re-running — every case not in the kept set is deleted, so no
+fingerprint twin survives to suppress its own retry.
+
+**The check that caught it was the same one as before.** Provenance was verified
+before any accuracy was computed: `decision_source` read 55 `llm_primary` and 45
+`guardrail_override`, which was enough to stop, and the unchanged token total
+confirmed within seconds that no model call had been made. Three voids across
+this project have now been caught by an accuracy-blind check, none by noticing
+that a number looked wrong — which is the point. A measurement discipline that
+triggers only on implausible results will pass anything plausible.
