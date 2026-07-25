@@ -31,18 +31,22 @@ export function UrgencyChip({ urgency }: { urgency: Urgency }) {
 }
 
 export function SourceChip({ source }: { source: DecisionSource }) {
-  const floor = source === "keyword_fallback";
+  // The accent marks work the machine decided. A guardrail catch wears the
+  // guard tokens so this chip reads as one family with the GuardChips beside
+  // it. The floor and a human reviewer are both "not the model's judgement"
+  // and stay neutral — the label carries the difference, colour would only
+  // imply a severity neither one has.
+  const guard = source === "guardrail_override";
+  const neutral = source === "keyword_fallback" || source === "human_override";
+  const tone = guard
+    ? { background: "var(--guard-soft)", color: "var(--guard)" }
+    : neutral
+      ? { background: "var(--secondary)", color: "var(--foreground)" }
+      : { background: "var(--accent)", color: "var(--accent-foreground)" };
   return (
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider"
-      style={
-        floor
-          ? { background: "var(--secondary)", color: "var(--foreground)" }
-          : {
-              background: "var(--accent)",
-              color: "var(--accent-foreground)",
-            }
-      }
+      style={tone}
     >
       {SOURCE_LABELS[source] ?? source}
     </span>

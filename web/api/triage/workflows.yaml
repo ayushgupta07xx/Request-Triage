@@ -202,6 +202,7 @@ branches:
         summary: "Follow-up reminder set against the urgency SLA"
       - action: log_outcome
         status: awaiting_human
+        summary: "Outcome logged; the case stays with a disputes handler"
 
   general_enquiry:
     label: "General enquiry"
@@ -214,6 +215,7 @@ branches:
         summary: "Draft answer grounded in the knowledge base, with source cited"
       - action: log_outcome
         status: auto_resolved
+        summary: "Outcome logged; answered from the knowledge base and closed without a person"
       - action: set_follow_up
         offset: from_sla
         conditional_on_urgency: [high, critical]
@@ -238,6 +240,7 @@ branches:
         summary: "Follow-up task raised for the assigned team"
       - action: log_outcome
         status: awaiting_human
+        summary: "Outcome logged; the case stays with the servicing team"
 
   financial_hardship:
     label: "Financial hardship"
@@ -263,6 +266,7 @@ branches:
         summary: "Priority follow-up against the critical SLA"
       - action: log_outcome
         status: escalated
+        summary: "Outcome logged; escalated for specialist assessment"
 
   other:
     label: "Out of scope / unclassified"
@@ -273,6 +277,7 @@ branches:
         summary: "Routed to human triage — no automated response generated"
       - action: log_outcome
         status: awaiting_human
+        summary: "Outcome logged; queued for manual triage"
 
 # ---------------------------------------------------------------------------
 # Review queue

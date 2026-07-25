@@ -280,6 +280,10 @@ def process_request(
 # Summaries of the two review audit steps. The API reads them to answer "has
 # this case already been reviewed" without a schema change, and the console
 # reads them to render the review strip, so they are constants, not literals.
+# Shared prefix so a re-run can recognise a human step without matching each
+# constant. Anything starting with this is an audit record about a person, not
+# an action the branch performed.
+HUMAN_REVIEW_PREFIX = "Human review:"
 HUMAN_REVIEW_APPROVED = "Human review: disposition confirmed"
 HUMAN_REVIEW_CORRECTED = "Human review: label corrected"
 
@@ -368,6 +372,16 @@ def apply_human_override(
     prior_urgency = case.classification.urgency
     prior_status = case.status
     note = reviewer_note.strip()
+    # The re-run starts from an empty action list, so without this every human
+    # step already on the case would be dropped: a second correction would
+    # erase the first, and a correction would erase a prior approval. Branch
+    # output is reproducible and may be rebuilt; a record of who touched the
+    # case is not, and is carried forward instead.
+    prior_review = [
+        a
+        for a in case.actions
+        if a.summary and a.summary.startswith(HUMAN_REVIEW_PREFIX)
+    ]
 
     corrected = case.classification.model_copy(deep=True)
     corrected.request_type = new_type
@@ -423,6 +437,9 @@ def apply_human_override(
             final_status = CaseStatus(step["status"])
 
     rerun.status = _grounding_gate(final_status, grounding_required, kb_hit)
+
+    # Branch output first, then every human touch in the order it happened.
+    rerun.actions.extend(prior_review)
 
     # Three layers on one line: what the model said, what the system did with
     # it, what the reviewer decided. This is the training pair, and it is also

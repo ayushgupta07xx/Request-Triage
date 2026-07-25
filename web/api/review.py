@@ -67,7 +67,6 @@ from triage.engine import (  # noqa: E402
 )
 from triage.schemas import (  # noqa: E402
     CaseStatus,
-    DecisionSource,
     RequestType,
     Urgency,
 )
@@ -151,12 +150,13 @@ def review(payload: ReviewRequest) -> dict:
             f"case is {case.status.value}; only {'/'.join(sorted(s.value for s in REVIEWABLE))} can be reviewed",
         )
 
-    # `Classification.was_overridden()` means "differs from the model proposal",
-    # which is already true for every guardrail catch - it would lock the review
-    # buttons on exactly the hardship cases most worth reviewing. Provenance is
-    # the right question here: has a *human* already decided this one.
-    if case.classification.decision_source == DecisionSource.HUMAN_OVERRIDE:
-        raise HTTPException(409, "case has already been overridden by a reviewer")
+    # A previous correction does not close the case to further correction.
+    # Reviewers mis-click, and a triage desk where the first answer is final is
+    # worse than one that records being wrong and then being fixed. Each
+    # correction appends its own audit step and the original model proposal is
+    # never touched, so the training pair stays (what the model said, what the
+    # reviewer settled on). The no-op guard below catches the accidental
+    # re-submit of a decision that is already in force.
 
     if action == "approve":
         if has_review_step(case, HUMAN_REVIEW_APPROVED):

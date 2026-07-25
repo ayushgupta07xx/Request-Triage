@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   emptyDataset,
+  invalidateLiveDataset,
   loadBakedDatasets,
   loadLiveDataset,
   type BakedKey,
   type DatasetKey,
 } from "@/lib/data";
-import type { DemoData } from "@/lib/types";
+import type { Case, DemoData } from "@/lib/types";
 import Console from "@/components/console";
 
 export default function DeskPage() {
@@ -37,6 +38,22 @@ export default function DeskPage() {
     return () => {
       alive = false;
     };
+  }, []);
+
+  // A reviewed case is replaced in place. Every partition chip recomputes from
+  // cases[], so Queued / Escalated / Review update on the next frame. The
+  // `summary` block (automation rate, SLA breaches) still reflects the last
+  // fetch and self-heals when the 30s TTL expires — recomputing it here would
+  // reimplement build_dataset in TypeScript and give the dashboard two sources
+  // of truth for the same numbers.
+  const onReviewed = useCallback((updated: Case) => {
+    setLive((prev) => ({
+      ...prev,
+      cases: prev.cases.map((c) =>
+        c.case_id === updated.case_id ? updated : c
+      ),
+    }));
+    invalidateLiveDataset();
   }, []);
 
   const all = useMemo(
@@ -68,7 +85,7 @@ export default function DeskPage() {
 
   return (
     <main className="page-enter">
-      <Console all={all} />
+      <Console all={all} onReviewed={onReviewed} />
     </main>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Case } from "@/lib/types";
+import type { Case, TraceStep } from "@/lib/types";
 import { TYPE_LABELS } from "@/lib/types";
 import InfoHint from "./info-hint";
 import {
@@ -50,9 +50,238 @@ function Eyebrow({
   );
 }
 
-export default function CaseDetail({ c }: { c: Case }) {
+// Identifiers stay identifiers - the brief names four of these actions, and a
+// reviewer looking for them should find them - but they read as labels rather
+// than as raw enum values.
+const ACTION_LABELS: Record<string, string> = {
+  generate_response: "generate response",
+  route_to_team: "route to team",
+  set_follow_up: "set follow-up",
+  log_outcome: "log outcome",
+  escalate: "escalate",
+  notify_supervisor: "notify supervisor",
+  pause_automation: "pause automation",
+  suppress_collections: "suppress collections",
+  start_sla_timer: "start SLA timer",
+};
+
+// The engine falls back to the action name when a step declares no summary, so
+// a trace row would otherwise print its own title twice. Older baked runs still
+// carry those rows, which is why this is handled here and not only in config.
+function stepSummary(s: TraceStep): string | null {
+  const text = (s.summary ?? "").trim();
+  if (!text || text === s.action) return null;
+  return text;
+}
+
+// Mirrors the two constants in triage/engine.py. A human review step is not a
+// branch step and should not look like one.
+const HUMAN_STEP = "Human review:";
+
+// Mirrors HUMAN_REVIEW_APPROVED in triage/engine.py. Approval is recorded as a
+// trace step, so the card reads its own persisted state rather than tracking a
+// separate client-side flag that could drift from the store.
+const HUMAN_APPROVED_STEP = "Human review: disposition confirmed";
+
+const REVIEW_TYPES = [
+  "billing_dispute",
+  "general_enquiry",
+  "service_request",
+  "financial_hardship",
+  "other",
+] as const;
+
+const REVIEW_URGENCIES = ["low", "medium", "high", "critical"] as const;
+
+// Same shape as the queue's filter chips, so the review picker reads as part
+// of the console rather than a form bolted onto it.
+const pickChip = (active: boolean) =>
+  `rounded-full px-2.5 py-1 text-[11px] transition-colors ${
+    active
+      ? "bg-primary text-primary-foreground"
+      : "bg-secondary text-muted-foreground hover:text-foreground"
+  }`;
+
+function ReviewRow({
+  c,
+  canReview,
+  humanDecided,
+  onReviewed,
+}: {
+  c: Case;
+  canReview: boolean;
+  humanDecided: boolean;
+  onReviewed?: (updated: Case) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<null | "approve" | "override">(null);
+  const [error, setError] = useState<string | null>(null);
+  const [type, setType] = useState<string>(c.request_type);
+  const [urgency, setUrgency] = useState<string>(c.urgency);
+  const approved = c.trace.some((s) => s.summary === HUMAN_APPROVED_STEP);
+
+  // What a person already corrected, shown as layers: what the earlier layer
+  // proposed, and what the reviewer settled on. Both halves of the training
+  // pair on one line — and it sits ABOVE the controls rather than replacing
+  // them, because a correction can itself be corrected.
+  const strip = humanDecided ? (
+    <div className="mb-6">
+      <Eyebrow color="var(--guard)">Human override</Eyebrow>
+      <div className="mt-2 pl-4 font-mono text-[11.5px] text-muted-foreground">
+        {c.proposal ? (
+          <>
+            proposed{" "}
+            <span className="text-foreground">
+              {c.proposal.request_type} / {c.proposal.urgency}
+            </span>
+            {" · "}
+          </>
+        ) : null}
+        corrected to{" "}
+        <span className="text-foreground">
+          {c.request_type} / {c.urgency}
+        </span>
+      </div>
+    </div>
+  ) : null;
+
+  if (!canReview) {
+    return <div className="mt-6">{strip}</div>;
+  }
+
+  const send = async (action: "approve" | "override") => {
+    setBusy(action);
+    setError(null);
+    try {
+      const res = await fetch("/api/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          action === "approve"
+            ? { case_id: c.case_id, action }
+            : { case_id: c.case_id, action, request_type: type, urgency }
+        ),
+      });
+      const body = await res.json();
+      // FastAPI puts the refusal in `detail`, and the refusals are the
+      // interesting part: 409 on a second override, 503 when the store cannot
+      // be written. Showing the reason beats a generic failure.
+      if (!res.ok) throw new Error(body?.detail ?? `HTTP ${res.status}`);
+      setOpen(false);
+      onReviewed?.(body as Case);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Review failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="mt-6">
+      {strip}
+      <Eyebrow hint="In production this sits behind the associate's SSO role; the demo leaves it open so you can exercise the loop. An override re-runs the corrected branch through the real engine and keeps the disagreement as labelled training signal.">
+        Review
+      </Eyebrow>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-4">
+        <button
+          type="button"
+          disabled={busy !== null || approved}
+          onClick={() => send("approve")}
+          className={
+            approved
+              ? `${pickChip(true)} disabled:opacity-100`
+              : `${pickChip(false)} disabled:opacity-50`
+          }
+        >
+          {approved
+            ? "\u2713 Approved"
+            : busy === "approve"
+              ? "Confirming…"
+              : "Approve"}
+        </button>
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => setOpen((v) => !v)}
+          className={`${pickChip(open)} disabled:opacity-50`}
+        >
+          Override
+        </button>
+      </div>
+
+      {open ? (
+        <div className="mt-3 space-y-2 pl-4">
+          <div className="flex flex-wrap gap-1.5">
+            {REVIEW_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setType(t)}
+                className={pickChip(type === t)}
+              >
+                {TYPE_LABELS[t] ?? t}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {REVIEW_URGENCIES.map((u) => (
+              <button
+                key={u}
+                type="button"
+                onClick={() => setUrgency(u)}
+                className={pickChip(urgency === u)}
+              >
+                {u}
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => send("override")}
+              className={`${pickChip(true)} ml-2 disabled:opacity-50`}
+            >
+              {busy === "override" ? "Re-running…" : "Confirm"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="mt-2 pl-4 font-mono text-[11px]" style={{ color: "var(--destructive)" }}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export default function CaseDetail({
+  c,
+  reviewable = false,
+  onReviewed,
+}: {
+  c: Case;
+  // CaseDetail does not know which dataset it renders, and should not. The
+  // desk passes this only for live cases, so the baked batches and the
+  // live-mode result pane cannot grow buttons by accident: the prop is simply
+  // absent there.
+  reviewable?: boolean;
+  onReviewed?: (updated: Case) => void;
+}) {
+  const humanDecided = c.decision_source === "human_override";
+  // `was_overridden` only means "differs from the proposal", which a human
+  // correction also satisfies. The guardrail block below must not claim the
+  // guardrail produced a label a person chose.
   const overridden =
-    c.was_overridden && (c.guardrail_triggers?.length ?? 0) > 0;
+    c.was_overridden &&
+    (c.guardrail_triggers?.length ?? 0) > 0 &&
+    !humanDecided;
+  // A corrected case stays reviewable. A mis-click has to be fixable, and the
+  // endpoint records the second correction on top of the first rather than
+  // replacing it.
+  const canReview =
+    reviewable &&
+    (c.status === "awaiting_human" || c.status === "escalated");
 
   const chapters = ["Decision", "Decision path", "Execution"] as const;
   const total = chapters.length;
@@ -192,7 +421,7 @@ export default function CaseDetail({ c }: { c: Case }) {
         >
           <div
             ref={innerRef}
-            className="no-bar max-h-full overflow-y-auto px-2 py-4"
+            className="no-bar max-h-full overflow-y-auto px-2 pb-12 pt-4"
           >
             <div className="mx-auto w-full max-w-[660px]">
               {/* ============ chapter 1 · the verdict + the message ===== */}
@@ -234,6 +463,15 @@ export default function CaseDetail({ c }: { c: Case }) {
                       ) : null}
                     </div>
                   </div>
+
+                  {canReview || humanDecided ? (
+                    <ReviewRow
+                      c={c}
+                      canReview={canReview}
+                      humanDecided={humanDecided}
+                      onReviewed={onReviewed}
+                    />
+                  ) : null}
 
                   <div className="mt-8">
                     <Eyebrow>Received</Eyebrow>
@@ -343,43 +581,98 @@ export default function CaseDetail({ c }: { c: Case }) {
               {i === 2 ? (
                 <div>
                   <Eyebrow>Executed · {c.n_actions} steps</Eyebrow>
-                  <ol className="mt-5 space-y-5 pl-4">
-                    {c.trace.map((s, n) => (
-                      <li key={n}>
-                        <div className="flex items-baseline gap-2.5 text-[14.5px]">
-                          <span className="font-mono text-[12px] text-muted-foreground/70">
-                            {String(n + 1).padStart(2, "0")}
-                          </span>
-                          <span className="font-medium">{s.action}</span>
-                          {s.target ? (
-                            <span className="text-muted-foreground">
-                              → {s.target}
+                  <ol className="mt-5 pl-1">
+                    {c.trace.map((s, n) => {
+                      const human = (s.summary ?? "").startsWith(HUMAN_STEP);
+                      const failed = s.outcome === "failed";
+                      const summary = stepSummary(s);
+                      const last = n === c.trace.length - 1;
+                      // Colour carries meaning or it is noise: a failure, a
+                      // human event, everything else neutral.
+                      const tone = failed
+                        ? "var(--u-critical)"
+                        : human
+                          ? "var(--guard)"
+                          : "var(--border-accent-strong)";
+                      return (
+                        <li key={n} className={`relative pl-7 ${last ? "" : "pb-6"}`}>
+                          {last ? null : (
+                            <span
+                              aria-hidden
+                              className="absolute left-[4px] top-3.5 h-full w-px"
+                              style={{ background: "var(--border)" }}
+                            />
+                          )}
+                          <span
+                            aria-hidden
+                            className="absolute left-0 top-[5px] h-[9px] w-[9px] rounded-full border-2"
+                            style={{ borderColor: tone, background: "var(--card)" }}
+                          />
+                          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                            <span
+                              className="font-mono text-[10px] uppercase tracking-[0.16em]"
+                              style={{ color: tone }}
+                            >
+                              {ACTION_LABELS[s.action] ?? s.action.replace(/_/g, " ")}
                             </span>
-                          ) : null}
-                          {s.outcome && s.outcome !== "succeeded" ? (
-                            <span style={{ color: "var(--u-critical)" }}>
-                              {s.outcome}
-                            </span>
-                          ) : null}
-                        </div>
-                        {s.summary ? (
-                          <div className="mt-1 pl-8 text-[13px] text-muted-foreground">
-                            {s.summary}
+                            {s.target ? (
+                              <span className="rounded-full bg-secondary px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                {s.target}
+                              </span>
+                            ) : null}
+                            {s.outcome && s.outcome !== "succeeded" ? (
+                              <span
+                                className="font-mono text-[10px] uppercase tracking-wider"
+                                style={{
+                                  color: failed
+                                    ? "var(--u-critical)"
+                                    : "var(--muted-foreground)",
+                                }}
+                              >
+                                {s.outcome}
+                              </span>
+                            ) : null}
                           </div>
-                        ) : null}
-                        {s.artifact ? (
-                          <pre
-                            className="ml-8 mt-2.5 max-w-[56ch] whitespace-pre-wrap rounded-xl p-4 font-sans text-[13px] leading-relaxed text-muted-foreground"
-                            style={{
-                              background: "var(--secondary)",
-                              border: "1px solid var(--border-accent)",
-                            }}
-                          >
-                            {s.artifact}
-                          </pre>
-                        ) : null}
-                      </li>
-                    ))}
+                          {summary ? (
+                            <div className="mt-1.5 max-w-[58ch] text-[13.5px] leading-relaxed text-muted-foreground">
+                              {summary}
+                            </div>
+                          ) : null}
+                          {s.artifact ? (
+                            s.action === "generate_response" ? (
+                              // Outbound copy. It gets the card, because this is
+                              // the thing a customer would actually receive.
+                              <pre
+                                className="mt-2.5 max-w-[58ch] whitespace-pre-wrap rounded-xl p-4 font-sans text-[13px] leading-relaxed text-muted-foreground"
+                                style={{
+                                  background: "var(--secondary)",
+                                  border: "1px solid var(--border-accent)",
+                                }}
+                              >
+                                {s.artifact}
+                              </pre>
+                            ) : (
+                              // An audit record, not a message. Quieter, mono,
+                              // no border - it is evidence, not correspondence.
+                              <div
+                                className="mt-2 max-w-[62ch] whitespace-pre-wrap rounded-lg px-3 py-2 font-mono text-[11.5px] leading-relaxed text-muted-foreground"
+                                style={{ background: "var(--secondary)" }}
+                              >
+                                {s.artifact}
+                              </div>
+                            )
+                          ) : null}
+                          {s.error ? (
+                            <div
+                              className="mt-1.5 font-mono text-[11px]"
+                              style={{ color: "var(--u-critical)" }}
+                            >
+                              {s.error}
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ol>
                   <div className="mt-6 pl-4 font-mono text-[10px] text-muted-foreground/60">
                     {c.case_id} · {c.trace_id}

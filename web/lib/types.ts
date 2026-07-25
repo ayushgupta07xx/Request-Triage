@@ -26,7 +26,15 @@ export type CaseStatus =
 export type DecisionSource =
   | "llm_primary"
   | "llm_secondary"
-  | "keyword_fallback";
+  | "keyword_fallback"
+  // Guardrails outrank the model, so a guardrail catch is its own provenance
+  // rather than a flavour of the model's. It has been in the data since the
+  // first batch and was missing here, which is why those cases rendered a raw
+  // enum string in the source chip.
+  | "guardrail_override"
+  // A reviewer corrected the label and the corrected branch was re-run. The
+  // execution is the machine's; the decision is not.
+  | "human_override";
 
 // One executed step in a branch. `artifact` carries any composite output the
 // step produced (e.g. the drafted response text on generate_response).
@@ -133,6 +141,8 @@ export const SOURCE_LABELS: Record<DecisionSource, string> = {
   llm_primary: "LLM (primary)",
   llm_secondary: "LLM (secondary)",
   keyword_fallback: "Keyword floor",
+  guardrail_override: "Guardrail",
+  human_override: "Human review",
 };
 
 export const URGENCY_ORDER: Urgency[] = ["low", "medium", "high", "critical"];

@@ -174,6 +174,22 @@ def main() -> int:
     r = review(client, case_id=a["case_id"], action="approve")
     check(r.status_code == 409, "second approve is refused", f"HTTP {r.status_code}")
 
+    # An approval is the record that a person looked; it is never undone. The
+    # operational answer to a mis-click is to correct forward, which must work
+    # on a case that has already been approved.
+    r = review(
+        client,
+        case_id=a["case_id"],
+        action="override",
+        request_type="financial_hardship",
+        note="approved by mistake",
+    )
+    check(
+        r.status_code == 200,
+        "an approved case can still be corrected",
+        f"HTTP {r.status_code}: {r.text[:120]}",
+    )
+
     # --- override ----------------------------------------------------------
     print("\n-- override --")
     b = mint(
@@ -243,8 +259,32 @@ def main() -> int:
             "same case_id — no second row forked",
         )
 
-    r = review(client, case_id=b["case_id"], action="override", request_type="other")
-    check(r.status_code == 409, "second override is refused", f"HTTP {r.status_code}")
+    # Corrections are append-only: correcting again to a DIFFERENT label is
+    # accepted and recorded on top, while re-submitting the decision already in
+    # force is refused as a no-op.
+    again = "other" if target != "other" else "service_request"
+    r = review(client, case_id=b["case_id"], action="override", request_type=again)
+    check(
+        r.status_code == 200,
+        "a second correction is accepted",
+        f"HTTP {r.status_code}: {r.text[:120]}",
+    )
+    if r.status_code == 200:
+        steps = [s.get("summary") for s in r.json().get("trace", [])]
+        # Exactly two: the first correction and this one. ">= 1" passed while
+        # the re-run was silently discarding the first, which is precisely the
+        # kind of assertion that agrees with whoever wrote it.
+        check(
+            steps.count("Human review: label corrected") == 2,
+            "both corrections survive in the trace",
+            f"{steps.count('Human review: label corrected')} correction step(s)",
+        )
+    r = review(client, case_id=b["case_id"], action="override", request_type=again)
+    check(
+        r.status_code == 409,
+        "re-submitting the current label is refused",
+        f"HTTP {r.status_code}",
+    )
 
     # --- the safety claim --------------------------------------------------
     print("\n-- grounding survives a human being certain --")

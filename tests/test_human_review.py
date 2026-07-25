@@ -21,6 +21,7 @@ from triage.classifier import FLOOR_MODEL_NAME
 from triage.config import load_config
 from triage.engine import (
     HUMAN_REVIEW_APPROVED,
+    HUMAN_REVIEW_PREFIX,
     HUMAN_REVIEW_CORRECTED,
     apply_human_override,
     has_review_step,
@@ -200,3 +201,46 @@ def test_audit_line_names_the_model_when_a_model_answered(cfg):
     )
     assert "model proposed" in line
     assert "keyword floor read" not in line
+
+
+def test_a_second_correction_does_not_erase_the_first(cfg):
+    # The re-run rebuilds the action list from scratch. Branch output can be
+    # rebuilt; a record of who touched the case cannot.
+    case = _floor_case(cfg)
+
+    once = apply_human_override(
+        case, RequestType.SERVICE_REQUEST, Urgency.HIGH, "first pass", cfg
+    )
+    twice = apply_human_override(
+        once, RequestType.GENERAL_ENQUIRY, Urgency.LOW, "corrected again", cfg
+    )
+
+    corrections = [a for a in twice.actions if a.summary == HUMAN_REVIEW_CORRECTED]
+    assert len(corrections) == 2, (
+        "the earlier correction was discarded by the re-run — the audit chain "
+        "is not append-only"
+    )
+    assert twice.classification.request_type == RequestType.GENERAL_ENQUIRY
+    assert twice.case_id == case.case_id
+
+
+def test_a_correction_does_not_erase_an_approval(cfg):
+    # An approval is the record that a person looked. Acting on the case next
+    # must not delete it.
+    case = _floor_case(cfg)
+    record_human_approval(case, "looked at it")
+
+    corrected = apply_human_override(
+        case, RequestType.SERVICE_REQUEST, Urgency.HIGH, "changed my mind", cfg
+    )
+
+    assert has_review_step(
+        corrected, HUMAN_REVIEW_APPROVED
+    ), "the approval record did not survive the correction"
+    assert has_review_step(corrected, HUMAN_REVIEW_CORRECTED)
+    human_steps = [
+        a
+        for a in corrected.actions
+        if a.summary and a.summary.startswith(HUMAN_REVIEW_PREFIX)
+    ]
+    assert len(human_steps) == 2

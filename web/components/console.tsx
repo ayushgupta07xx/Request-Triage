@@ -68,8 +68,10 @@ export function DatasetToggle({
 
 export default function Console({
   all,
+  onReviewed,
 }: {
   all: Record<DatasetKey, DemoData>;
+  onReviewed?: (updated: Case) => void;
 }) {
   const [dataset, setDataset] = useState<DatasetKey>("dev200");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -301,7 +303,14 @@ export default function Console({
       <section className="min-h-0 p-5">
         {selected ? (
           <div key={selected.case_id} className="h-full">
-            <CaseDetail c={selected} />
+            <CaseDetail
+              c={selected}
+              // Only live cases exist in the store, so only live cases can be
+              // acted on. A button on a baked export could not write anything
+              // — it would be a demo of a feature rather than the feature.
+              reviewable={dataset === "live"}
+              onReviewed={onReviewed}
+            />
           </div>
         ) : (
           <p className="pt-8 text-[13px] text-muted-foreground">
