@@ -14,4 +14,6 @@ repos:
       - id: trailing-whitespace
       - id: check-yaml
       - id: check-added-large-files
-        args: [--maxkb=500]
+        # 1000, not 500: the submission deck ships in the repo so the
+        # GitHub link is a complete submission on its own.
+        args: [--maxkb=1000]
