@@ -47,7 +47,7 @@ export const LIVE_DATASET: DatasetMeta = {
   label: "Live",
   tier: "whichever tier answered",
   file: "/api/cases",
-  note: "Cases processed on the Live page, persisted to libSQL. No ground-truth labels, so these are never scored.",
+  note: "Seeded with three examples, then whatever anyone processes on the Live page — persisted to libSQL and shared across visitors. No ground-truth labels, so these are never scored.",
 };
 
 // The desk shows everything; the performance page shows only what can be scored.
