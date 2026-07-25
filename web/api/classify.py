@@ -64,6 +64,7 @@ from triage.llm import (  # noqa: E402
     describe_waterfall,
 )
 from triage.schemas import Channel, IncomingRequest  # noqa: E402
+from triage.turso import store_from_env  # noqa: E402
 
 app = FastAPI(title="request-triage live API")
 
@@ -73,6 +74,21 @@ _CFG = load_config()
 # Live mode mirrors the demo's measurement tier so a reviewer sees the same
 # model that produced the published numbers, not the cheap bulk tier.
 _TIER = Tier.QUALITY
+
+# Persistence is optional and lazily built. Without TURSO_* the deployment
+# behaves exactly as it did before Turso existed: cases are processed in memory
+# and not stored. With it, duplicate suppression (which the engine guards with
+# `if store is not None`) and the audit trail come alive on the hosted system.
+_STORE = None
+_STORE_RESOLVED = False
+
+
+def _store():
+    global _STORE, _STORE_RESOLVED
+    if not _STORE_RESOLVED:
+        _STORE_RESOLVED = True
+        _STORE = store_from_env(os.getenv)
+    return _STORE
 
 
 class ClassifyIn(BaseModel):
@@ -152,6 +168,7 @@ def ready() -> dict:
             "tier": _TIER.value,
             "providers": None,
             "tiers": [],
+            "storage": "none",
             "detail": "No provider keys on this deployment; demo mode shows the "
             "full system offline.",
         }
@@ -162,6 +179,7 @@ def ready() -> dict:
         "tier": _TIER.value,
         "providers": describe_waterfall(wf),
         "tiers": [f"{p.name}:{p.model}" for p in wf.providers],
+        "storage": "turso" if _store() else "ephemeral",
         "detail": None,
     }
 
@@ -195,7 +213,8 @@ def classify(payload: ClassifyIn) -> dict:
     wf = _waterfall(skip)
 
     try:
-        case = process_request(req, _CFG, store=None, waterfall=wf)
+        store = _store()
+        case = process_request(req, _CFG, store=store, waterfall=wf)
     except Exception as exc:  # noqa: BLE001 - surface the reason, never a 500 page
         raise HTTPException(
             status_code=502, detail=f"Pipeline failed: {type(exc).__name__}: {exc}"
@@ -205,6 +224,10 @@ def classify(payload: ClassifyIn) -> dict:
     # against, and we do not invent one from the wall clock.
     card = to_card(case.model_dump(mode="json"))
     card["_live"] = True
+    # Report persistence honestly: a degraded store means the case was answered
+    # but not written, and saying "stored" would be a lie the audit trail cannot
+    # back up.
+    card["_persisted"] = bool(store) and not store.degraded
     card["_skipped_tiers"] = skip
     card["_waterfall"] = describe_waterfall(wf)
     return card
