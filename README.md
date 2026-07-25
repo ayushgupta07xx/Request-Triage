@@ -186,6 +186,6 @@ entries buy 8.5%. Entry twelve is a config edit.
 
 Python 3.11 · pydantic · PyYAML · httpx · Groq (`llama-3.3-70b-versatile`
 quality, `llama-3.1-8b-instant` bulk) · Gemini for the cross-family holdout ·
-SQLite · Next.js 14 + Tailwind · FastAPI on Vercel serverless functions.
+SQLite locally, libSQL/Turso on the hosted deploy · Next.js 14 + Tailwind · FastAPI on Vercel serverless functions.
 
 `docs/` carries the decision log, evaluation reports and diagnostics.
