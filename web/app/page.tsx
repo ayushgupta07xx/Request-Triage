@@ -2,20 +2,28 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { loadAllDatasets, type DatasetKey } from "@/lib/data";
+import { loadDataset, prefetchBakedDatasets } from "@/lib/data";
 import type { DemoData } from "@/lib/types";
 import CaseCarousel, { HandoffBar } from "@/components/case-carousel";
 
 export default function Landing() {
-  const [all, setAll] = useState<Record<DatasetKey, DemoData> | null>(null);
+  const [dev, setDev] = useState<DemoData | null>(null);
 
   useEffect(() => {
-    loadAllDatasets()
-      .then(setAll)
-      .catch(() => setAll(null));
+    let alive = true;
+    // The carousel shows four cards from one batch. It used to wait on every
+    // dataset including a serverless round trip to Turso, which is why the
+    // animation appeared a beat late on a page that cannot display a live case.
+    loadDataset("dev200")
+      .then((d) => alive && setDev(d))
+      .catch(() => alive && setDev(null));
+    // Warm the desk's data while the visitor reads the hero, so "Open the desk"
+    // lands on a cache hit. dev200 is shared, so this costs one extra request.
+    prefetchBakedDatasets();
+    return () => {
+      alive = false;
+    };
   }, []);
-
-  const dev = all?.dev200;
 
   return (
     <div className="relative flex min-h-[calc(100dvh-64px)] flex-col">

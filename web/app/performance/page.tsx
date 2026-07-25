@@ -1,20 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadAllDatasets, type DatasetKey } from "@/lib/data";
+import { loadBakedDatasets, type BakedKey, type DatasetKey } from "@/lib/data";
 import type { DemoData } from "@/lib/types";
 import Performance from "@/components/performance";
 import { DatasetToggle } from "@/components/console";
 
 export default function PerformancePage() {
-  const [all, setAll] = useState<Record<DatasetKey, DemoData> | null>(null);
-  const [dataset, setDataset] = useState<DatasetKey>("test100");
+  // Only the measured batches. Live cases carry no ground-truth labels, so
+  // accuracy is undefined for them — putting them on a page of scored metrics
+  // would imply they had been graded. The toggle here never offers Live, and
+  // this page never fetches it.
+  const [all, setAll] = useState<Record<BakedKey, DemoData> | null>(null);
+  const [dataset, setDataset] = useState<BakedKey>("test100");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadAllDatasets()
-      .then(setAll)
-      .catch((e) => setError(e.message ?? "Could not load data."));
+    let alive = true;
+    loadBakedDatasets()
+      .then((d) => alive && setAll(d))
+      .catch((e) => alive && setError(e.message ?? "Could not load data."));
+    return () => {
+      alive = false;
+    };
   }, []);
 
   if (error) {
@@ -32,7 +40,7 @@ export default function PerformancePage() {
 
   if (!all) {
     return (
-      <main className="grid h-[calc(100dvh-53px)] place-items-center">
+      <main className="grid h-[calc(100dvh-64px)] place-items-center">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
       </main>
     );
@@ -42,7 +50,12 @@ export default function PerformancePage() {
     <main className="page-enter mx-auto max-w-6xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-[22px] font-bold tracking-tight">Performance</h1>
-        <DatasetToggle dataset={dataset} onChange={setDataset} />
+        <DatasetToggle
+          dataset={dataset}
+          onChange={(k: DatasetKey) => {
+            if (k !== "live") setDataset(k);
+          }}
+        />
       </div>
       <Performance data={all[dataset]} />
     </main>
