@@ -38,17 +38,32 @@ is the readiness probe instead.
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from triage.card import to_card
-from triage.config import load_config
-from triage.engine import process_request
-from triage.llm import Tier, Waterfall, build_waterfall, describe_waterfall
-from triage.schemas import Channel, IncomingRequest
+# The vendored package sits next to this file (web/api/triage, written by
+# scripts/sync_api.py). On Vercel the function runs with /var/task as its
+# working directory and only that on sys.path, so /var/task/api is never
+# searched and `import triage` fails at cold start. Locally this was invisible
+# because `uvicorn --app-dir web/api` already put this directory on the path.
+# Adding it explicitly makes both environments identical.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from triage.card import to_card  # noqa: E402
+from triage.config import load_config  # noqa: E402
+from triage.engine import process_request  # noqa: E402
+from triage.llm import (  # noqa: E402
+    Tier,
+    Waterfall,
+    build_waterfall,
+    describe_waterfall,
+)
+from triage.schemas import Channel, IncomingRequest  # noqa: E402
 
 app = FastAPI(title="request-triage live API")
 
