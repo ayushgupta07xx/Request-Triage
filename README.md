@@ -27,6 +27,10 @@ cp .env.example .env          # add GROQ_API_KEY (and GEMINI_API_KEY for holdout
 python3 scripts/run_eval.py --run corpus_test70_v2 --floor corpus_test_floor
 python3 scripts/run_eval.py --run holdout70_v2
 
+# check the safety properties themselves — guardrails escalate only, the floor
+# never closes a case, `grounded: true` is enforced. Offline, no key.
+python3 -m pytest -q
+
 # or process a split yourself (this one does need a key), then bake it in
 python3 scripts/run_batch.py --split dev --tier bulk
 python3 scripts/export_demo.py --db data/runs/corpus_dev_bulk.db \
