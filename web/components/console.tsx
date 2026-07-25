@@ -3,21 +3,34 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DemoData, Case, RequestType } from "@/lib/types";
 import { TYPE_LABELS } from "@/lib/types";
-import { DATASETS, type DatasetKey } from "@/lib/data";
+import {
+  DATASETS,
+  DESK_DATASETS,
+  type DatasetKey,
+  type DatasetMeta,
+} from "@/lib/data";
 import QueueRow from "./queue-row";
 import CaseDetail from "./case-detail";
 import InfoHint from "./info-hint";
 
 type TypeFilter = RequestType | "all";
-type StatusFilter = "any" | "review" | "auto" | "queued" | "escalated";
+type StatusFilter =
+  | "any"
+  | "review"
+  | "auto"
+  | "queued"
+  | "escalated"
+  | "duplicate";
 
 export function DatasetToggle({
   dataset,
   onChange,
   hintPlacement = "bottom-right",
+  options = DATASETS,
 }: {
   dataset: DatasetKey;
   onChange: (k: DatasetKey) => void;
+  options?: DatasetMeta[];
   hintPlacement?:
     | "bottom"
     | "bottom-right"
@@ -26,11 +39,11 @@ export function DatasetToggle({
     | "top"
     | "top-right";
 }) {
-  const meta = DATASETS.find((d) => d.key === dataset);
+  const meta = options.find((d) => d.key === dataset);
   return (
     <div className="flex items-center gap-1.5">
       <div className="flex items-center rounded-full bg-secondary p-0.5">
-        {DATASETS.map((d) => (
+        {options.map((d) => (
           <button
             key={d.key}
             onClick={() => onChange(d.key)}
@@ -91,6 +104,12 @@ export default function Console({
     () => byType.filter((c) => c.status === "escalated").length,
     [byType]
   );
+  // Resends caught by the content fingerprint before any model call.
+  // Zero on the baked batches, which is why the chip is conditional.
+  const duplicateCount = useMemo(
+    () => byType.filter((c) => c.status === "duplicate").length,
+    [byType]
+  );
 
   const filtered = useMemo(
     () =>
@@ -103,7 +122,9 @@ export default function Console({
               ? c.status === "awaiting_human"
               : statusFilter === "escalated"
                 ? c.status === "escalated"
-                : true
+                : statusFilter === "duplicate"
+                  ? c.status === "duplicate"
+                  : true
       ),
     [byType, statusFilter]
   );
@@ -164,10 +185,12 @@ export default function Console({
             <span className="inline-flex items-center gap-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/70">
               Outcome
               <InfoHint placement="side">
-                Auto, queued and escalated partition the batch — every case is
-                in exactly one. Flagged cuts across them: the classification
-                itself was uncertain. A queued case is not a failure; the branch
-                prepared the work and a person finishes it.
+                Auto, queued, escalated and duplicate partition the batch —
+                every case is in exactly one. Flagged cuts across them: the
+                classification itself was uncertain. A queued case is not a
+                failure; the branch prepared the work and a person finishes it.
+                A duplicate was suppressed by content fingerprint before any
+                model call, so it cost nothing to receive.
               </InfoHint>
             </span>
             <span className="ml-auto font-mono text-[10px] text-muted-foreground/70">
@@ -202,6 +225,19 @@ export default function Console({
             >
               Queued {queuedCount}
             </button>
+            {duplicateCount > 0 ? (
+              <button
+                onClick={() =>
+                  setStatusFilter((v) =>
+                    v === "duplicate" ? "any" : "duplicate"
+                  )
+                }
+                title="Resend caught by content fingerprint before any model call"
+                className={chip(statusFilter === "duplicate")}
+              >
+                Duplicate {duplicateCount}
+              </button>
+            ) : null}
             <button
               onClick={() =>
                 setStatusFilter((v) => (v === "escalated" ? "any" : "escalated"))
@@ -253,6 +289,7 @@ export default function Console({
           style={{ borderColor: "var(--border-accent)" }}
         >
           <DatasetToggle
+            options={DESK_DATASETS}
             dataset={dataset}
             onChange={setDataset}
             hintPlacement="right"

@@ -215,16 +215,39 @@ export default function LiveConsole() {
   // behaviour but invisible unless you read the chip, so announce it.
   const announce = useCallback(
     (card: LiveCase, requestedSkip: number, chain: string[]) => {
+      // A duplicate never reaches a model: the fingerprint check runs before
+      // classification, so model_name is legitimately absent. Reading that as
+      // a degraded provider would report an outage that never happened.
+      if (card.status === "duplicate") {
+        setToast({
+          title: "Suppressed as duplicate",
+          body: `Matched an earlier request${
+            card.duplicate_of ? ` (${card.duplicate_of})` : ""
+          } — no model was called`,
+          drift: false,
+        });
+        window.requestAnimationFrame(() => setToastIn(true));
+        toastTimers.current.push(
+          window.setTimeout(() => setToastIn(false), 4600),
+          window.setTimeout(() => setToast(null), 5000),
+        );
+        return;
+      }
+
       const short = chain.map((t) => t.split(":").pop() ?? t);
       const expected =
         requestedSkip >= short.length ? "keyword-floor" : short[requestedSkip];
-      const actual = card.model_name ?? "unknown";
-      const drift = Boolean(expected) && actual !== expected;
+      const actual = card.model_name;
+      // No model name and no expectation to compare against means we know
+      // nothing, not that something failed. Stay quiet rather than guess.
+      const drift = Boolean(actual) && Boolean(expected) && actual !== expected;
       setToast({
         title: drift ? "Degraded automatically" : "Answered by",
         body: drift
           ? `${expected} was unavailable, so ${actual} answered · ${card.decision_source}`
-          : `${actual} · ${card.decision_source}${card.latency_ms ? ` · ${card.latency_ms}ms` : ""}`,
+          : `${actual ?? card.decision_source}${
+              actual ? ` · ${card.decision_source}` : ""
+            }${card.latency_ms ? ` · ${card.latency_ms}ms` : ""}`,
         drift,
       });
       window.requestAnimationFrame(() => setToastIn(true));

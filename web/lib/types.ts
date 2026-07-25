@@ -18,7 +18,10 @@ export type Urgency = "low" | "medium" | "high" | "critical";
 export type CaseStatus =
   | "awaiting_human"
   | "auto_resolved"
-  | "escalated";
+  | "escalated"
+  // A resend caught by the content fingerprint before any model call. It is a
+  // real terminal status on the Python side, so it belongs in the mirror.
+  | "duplicate";
 
 export type DecisionSource =
   | "llm_primary"
@@ -123,6 +126,7 @@ export const STATUS_LABELS: Record<CaseStatus, string> = {
   awaiting_human: "Awaiting human",
   auto_resolved: "Auto-resolved",
   escalated: "Escalated",
+  duplicate: "Duplicate",
 };
 
 export const SOURCE_LABELS: Record<DecisionSource, string> = {
