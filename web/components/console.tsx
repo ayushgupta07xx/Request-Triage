@@ -321,20 +321,24 @@ export default function Console({
             />
           </div>
         ) : liveEmpty ? (
-          <div className="max-w-[44ch] pt-8">
-            <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-              Live queue
+          <div className="grid h-full place-items-center">
+            <div className="max-w-[42ch] px-6 text-center">
+              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                Live queue
+              </div>
+              <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+                Nothing processed yet. Run a request through{" "}
+                <Link
+                  href="/live"
+                  className="font-medium transition-opacity hover:opacity-75"
+                  style={{ color: "var(--primary)" }}
+                >
+                  Live
+                </Link>{" "}
+                and it lands here as a real case — open it, review it, correct
+                it.
+              </p>
             </div>
-            <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-              Nothing processed yet. Run a request through{" "}
-              <Link
-                href="/live"
-                className="text-foreground underline decoration-dotted underline-offset-4 transition-colors hover:decoration-solid"
-              >
-                Live
-              </Link>{" "}
-              and it lands here as a real case — open it, review it, correct it.
-            </p>
           </div>
         ) : (
           <p className="pt-8 text-[13px] text-muted-foreground">
