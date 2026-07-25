@@ -11,7 +11,7 @@ The brief's pain words are the design targets: request handling that is *slow*,
 *inconsistent* and *dependent on individual judgment*. Every claim below is
 measured on a held-out split, not asserted.
 
-**Live demo:** _(add URL)_ · **Repo:** https://github.com/ayushgupta07xx/Request-Triage
+**Live demo:** https://handoff-triage.vercel.app · **Repo:** https://github.com/ayushgupta07xx/Request-Triage
 
 ---
 

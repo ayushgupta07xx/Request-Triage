@@ -17,11 +17,11 @@ Design commitments (mirror PROJECT.md / DECISIONS):
     guardrail trigger, rationale, or entity that the run did not produce.
 
 Usage:
-    python3 scripts/export_demo.py --db data/runs/corpus_dev_bulk.db \
-        --out web/public/demo.json
-    # tomorrow, unchanged, just re-point:
-    python3 scripts/export_demo.py --db data/runs/corpus_test70_v2.db \
-        --out web/public/demo.json
+    python3 scripts/export_demo.py --db data/runs/corpus_dev_bulk_kb.db \
+        --out web/public/demo-dev200.json
+    # the held-out test run, unchanged, just re-point:
+    python3 scripts/export_demo.py --db data/runs/corpus_test70_v2_kb.db \
+        --out web/public/demo-test100.json
 """
 
 from __future__ import annotations
@@ -143,12 +143,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Bake a run .db into demo.json")
     ap.add_argument(
         "--db",
-        default="data/runs/corpus_dev_bulk.db",
+        default="data/runs/corpus_dev_bulk_kb.db",
         help="path to the CaseStore sqlite file",
     )
     ap.add_argument(
         "--out",
-        default="web/public/demo.json",
+        default="web/public/demo-dev200.json",
         help="output json path (created if the directory exists)",
     )
     ap.add_argument(
