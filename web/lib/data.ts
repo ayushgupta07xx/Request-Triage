@@ -123,15 +123,34 @@ export async function loadBakedDatasets(): Promise<Record<BakedKey, DemoData>> {
   return Object.fromEntries(entries) as Record<BakedKey, DemoData>;
 }
 
+// The live set changes as visitors add to it, so it cannot be cached for the
+// session like the baked batches. But refetching on every desk mount paid a
+// serverless cold start (~1.5s) each time, including on a simple tab switch
+// back. A short window covers navigation without ever showing stale data at
+// the moment it matters, because processing a case invalidates it explicitly.
+const LIVE_TTL_MS = 30_000;
+let liveCache: { at: number; data: DemoData } | null = null;
+
+/** Drop the cached live set. Call after a case is processed. */
+export function invalidateLiveDataset(): void {
+  liveCache = null;
+}
+
 /**
- * The live set. Never cached — visitors add to it — and never throws: no
- * endpoint (local dev without uvicorn), no database, or a transport failure
- * all resolve to an empty dataset. Callers treat it as background work.
+ * The live set. Never throws: no endpoint (local dev without uvicorn), no
+ * database, or a transport failure all resolve to an empty dataset. Callers
+ * treat it as background work.
  */
 export async function loadLiveDataset(): Promise<DemoData> {
+  if (liveCache && Date.now() - liveCache.at < LIVE_TTL_MS) {
+    return liveCache.data;
+  }
   try {
-    return await fetchOne(LIVE_DATASET.file);
+    const data = await fetchOne(LIVE_DATASET.file);
+    liveCache = { at: Date.now(), data };
+    return data;
   } catch {
+    // A failure is not cached: the next navigation should try again.
     return emptyDataset("live (unavailable)");
   }
 }

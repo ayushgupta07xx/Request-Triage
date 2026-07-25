@@ -12,6 +12,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { Case } from "@/lib/types";
+import { invalidateLiveDataset } from "@/lib/data";
 import CaseDetail from "./case-detail";
 import InfoHint from "./info-hint";
 
@@ -304,6 +305,9 @@ export default function LiveConsole() {
       const card = JSON.parse(text) as LiveCase;
       setResult(card);
       announce(card, skip, ready?.tiers ?? []);
+      // The desk's Live tab must show this case the moment the reviewer walks
+      // over to it, so drop the cached queue rather than let a TTL decide.
+      invalidateLiveDataset();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(
