@@ -27,6 +27,7 @@ type Ready = {
   tier: string;
   providers: string | null;
   tiers: string[];
+  storage?: "turso" | "ephemeral" | "none";
   detail: string | null;
 };
 
@@ -183,6 +184,7 @@ export default function LiveConsole() {
           tier: "quality",
           providers: null,
           tiers: [],
+          storage: "none",
           detail:
             "The live endpoint did not respond. Demo mode still shows the whole system offline.",
         }),
@@ -305,7 +307,10 @@ export default function LiveConsole() {
               batches.
               <Defs
                 rows={[
-                  ["Stored?", "No. The hosted disk is ephemeral."],
+                  [
+                    "Stored?",
+                    "Yes, in a libSQL database — so repeat sends are caught as duplicates before any model call.",
+                  ],
                   ["Auto-resolve?", "Rare here by design — enquiries have no auto-gate on this tier."],
                 ]}
               />
@@ -321,7 +326,9 @@ export default function LiveConsole() {
           {ready === null
             ? "checking…"
             : ready.live_mode
-              ? `${ready.tier} tier · ${ready.tiers.length} providers`
+              ? `${ready.tier} tier · ${ready.tiers.length} providers${
+                  ready.storage === "turso" ? " · persisted" : ""
+                }`
               : "live mode not configured"}
         </p>
         {ready && !ready.live_mode ? (
