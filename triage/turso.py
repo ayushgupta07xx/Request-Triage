@@ -109,10 +109,19 @@ class TursoCaseStore:
                 out.append(response.get("result", {}))
         return out
 
-    def _safe(self, stmts: list[tuple[str, list]]) -> Optional[list[dict]]:
-        """_pipeline, but a failure degrades the store instead of raising."""
+    def _safe(
+        self, stmts: list[tuple[str, list]], *, write: bool = False
+    ) -> Optional[list[dict]]:
+        """_pipeline, but a failure degrades the store instead of raising.
+
+        Only writes ensure the schema. Doing it on reads cost a second network
+        round trip on every dashboard load for a table that already exists; a
+        read against a database with no table simply degrades to an empty
+        result, which is the honest answer anyway.
+        """
         try:
-            self._ensure_schema()
+            if write:
+                self._ensure_schema()
             return self._pipeline(stmts)
         except Exception:
             self.degraded = True
@@ -154,7 +163,8 @@ class TursoCaseStore:
                         case.model_dump_json(),
                     ],
                 )
-            ]
+            ],
+            write=True,
         )
 
     def update_payload(self, case: CaseRecord) -> None:
@@ -173,7 +183,8 @@ class TursoCaseStore:
                         case.case_id,
                     ],
                 )
-            ]
+            ],
+            write=True,
         )
 
     # -- reads ------------------------------------------------------------

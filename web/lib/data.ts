@@ -86,20 +86,20 @@ async function fetchOne(file: string): Promise<DemoData> {
 }
 
 export async function loadAllDatasets(): Promise<Record<DatasetKey, DemoData>> {
-  const baked = await Promise.all(
-    DATASETS.map(async (d) => [d.key, await fetchOne(d.file)] as const)
-  );
-
+  // All three race. Awaiting the live fetch after the baked ones made a desk
+  // load cost static + live rather than max(static, live) — around half a
+  // second of avoidable spinner, since the live endpoint reaches Turso.
+  //
   // The live set must never take the page down with it: no endpoint (local dev
   // without uvicorn), no database, or a transport failure all resolve to an
   // empty dataset. Every key is always present, so callers can index without
   // guarding.
-  let live: DemoData;
-  try {
-    live = await fetchOne(LIVE_DATASET.file);
-  } catch {
-    live = emptyDataset("live (unavailable)");
-  }
+  const [baked, live] = await Promise.all([
+    Promise.all(
+      DATASETS.map(async (d) => [d.key, await fetchOne(d.file)] as const)
+    ),
+    fetchOne(LIVE_DATASET.file).catch(() => emptyDataset("live (unavailable)")),
+  ]);
 
   return Object.fromEntries([...baked, ["live", live] as const]) as Record<
     DatasetKey,
