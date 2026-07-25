@@ -22,14 +22,14 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # add GROQ_API_KEY (and GEMINI_API_KEY for holdout)
 
-# batch a corpus split through the full pipeline
+# recompute every published number from the committed runs — no API calls,
+# no key needed. --run takes a run NAME under data/runs/, not a path.
+python3 scripts/run_eval.py --run corpus_test70_v2 --floor corpus_test_floor
+python3 scripts/run_eval.py --run holdout70_v2
+
+# or process a split yourself (this one does need a key), then bake it in
 python3 scripts/run_batch.py --split dev --tier bulk
-
-# recompute every metric offline from the cached run — no API calls
-python3 scripts/run_eval.py --run data/runs/corpus_dev_bulk.jsonl
-
-# bake a run into the console's data and start the UI
-python3 scripts/export_demo.py --db data/runs/corpus_dev_bulk_kb.db \
+python3 scripts/export_demo.py --db data/runs/corpus_dev_bulk.db \
     --out web/public/demo-dev200.json
 cd web && npm install && npm run dev
 ```
