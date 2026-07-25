@@ -1,0 +1,286 @@
+# ---------------------------------------------------------------------------
+# Remediation configuration
+#
+# Every branch, SLA, routing target and guardrail lives here rather than in
+# Python. The engine interprets this file; it does not encode any of it.
+#
+# The practical consequence: an operations manager can add a request type,
+# retune an SLA, or add an escalation phrase by editing this file. No code
+# change, no deploy, no developer. That is the difference between a demo and
+# something an operations floor could actually adopt.
+# ---------------------------------------------------------------------------
+
+version: "1.0"
+context:
+  client: "Northgate Servicing"
+  domain: "Consumer lending and mortgage servicing operations desk"
+  persona: "Tier-1 operations associate working a shared inbox queue"
+
+defaults:
+  # Legacy global threshold, superseded by auto_policies below.
+  # Retained only so the offline eval's gate-status section has a
+  # reference value to report against; gating no longer reads it.
+  confidence_threshold: 1.00
+  # Identical message from the same sender inside this window is suppressed
+  # rather than re-executed. Prevents duplicate acknowledgements and double
+  # routing when a customer resends or a mail client retries.
+  duplicate_window_minutes: 60
+  # Multi-intent: when a secondary type is detected we act on the primary and
+  # raise a flag rather than silently dropping the second intent.
+  flag_secondary_intent: true
+
+# ---------------------------------------------------------------------------
+# Auto-handling policies, per deciding model.
+#
+# Every uncertainty signal we measured is a property of the (model, prompt)
+# pair, not of the architecture. On the 8B tier, keyword-floor agreement
+# caught 88% of model errors on dev and is load-bearing. On 70B the same
+# check flags 67 of 104 rows to catch 11 errors, while stated confidence is
+# well calibrated (ECE 0.063) and per-class gates separate cleanly. So each
+# model carries its own derived gate, and a model with no entry here never
+# auto-handles anything: unknown models get humans, not benefit of the doubt.
+#
+# Derivations (docs/eval/ + scripts/diag/pool_70b.py; pre-registered bar:
+# precision >= 95% point estimate AND n >= 15):
+#   70B per-class: billing_dispute 31/31 correct at conf >= 0.90 (n=40).
+#     general_enquiry (88%) and service_request (56%) fail on merit.
+#     'other' scored 11/11 but fails the n>=15 bar and stays human-gated -
+#     the bar exists precisely to resist small-sample perfection.
+#   8B ensemble: floor agreement AND conf >= 1.00 -> 44 auto @ 100.0%
+#     precision, 0 errors escaped (dev-200, current config incl. tier-2
+#     guardrail). Without tier-2 the same gate gives 49 auto @ 95.9%:
+#     the extra exclusions cost 5 auto rows and remove 2 escaped errors.
+# financial_hardship may never appear in a class gate; the loader rejects it.
+auto_policies:
+  "llama-3.3-70b-versatile":
+    kind: per_class
+    class_thresholds:
+      billing_dispute: 0.90
+  "llama-3.1-8b-instant":
+    kind: ensemble
+    threshold: 1.00
+
+
+# Urgency is classified independently of type and modulates behaviour inside
+# whichever branch is selected.
+urgency_sla_minutes:
+  low: 2880      # 2 working days
+  medium: 480    # 8 hours
+  high: 120      # 2 hours
+  critical: 15   # 15 minutes
+
+# ---------------------------------------------------------------------------
+# Guardrails
+#
+# Deterministic pre-filters that run on the raw message text BEFORE the
+# model's proposal is trusted. They may only escalate — force a more serious
+# type, raise urgency, or demand human review. They can never de-escalate.
+#
+# Rationale: a false escalation costs an associate two minutes. A missed
+# hardship disclosure is a regulatory and human failure. The asymmetry is not
+# close, so the system is deliberately biased toward caution.
+# ---------------------------------------------------------------------------
+guardrails:
+  # Tier 1 - explicit distress idioms. Strong evidence, strongest response:
+  # force the hardship branch, raise urgency, demand human review.
+  # Measured on the dev split (200 examples, 34 hardship): zero false positives.
+  - id: hardship_disclosure
+    description: "Customer explicitly signals inability to pay or financial distress"
+    phrases:
+      - "can't afford"
+      - "cannot afford"
+      - "lost my job"
+      - "made redundant"
+      - "behind on payments"
+      - "struggling to pay"
+      - "no income"
+      - "on benefits"
+      - "choose between"
+      - "about to miss"
+      - "miss my next payment"
+      - "drop in income"
+      - "loss of income"
+      - "can't keep up"
+      - "cannot keep up"
+      - "unable to pay"
+      - "difficulty paying"
+    force_type: financial_hardship
+    min_urgency: high
+    requires_human_review: true
+
+  # Tier 2 - ambiguous financial language. Weak evidence, weakest response:
+  # flag for a human and change nothing else. Deliberately does NOT force the
+  # hardship branch or raise urgency - pausing collections on a customer who
+  # never disclosed distress is an operational cost, not a free safety win.
+  #
+  # Rejected after measurement on dev (hardship hits / false positives):
+  #   "arrears"        4 / 19  - routine vocabulary in billing and servicing
+  #   "overdue"        1 /  4  - same
+  #   "fallen behind"  0 /  1  - no yield
+  # Phrases lifted verbatim from individual failing examples were also
+  # rejected: they inflate measured coverage without generalising. Implicit
+  # hardship (income collapse, job losses, losing a home) is expressed through
+  # consequence rather than vocabulary, and keyword rules cannot cover it -
+  # that coverage comes from the review policy, not from this list.
+  # MEASURED EFFECT, which is not the effect it was designed for. On the dev
+  # split it fires on 20 rows, 12 of them genuinely hardship - and all 12 were
+  # already flagged by the ensemble check, so its marginal hardship-safety
+  # value is zero. What it actually does is remove ambiguous messages from
+  # automation: excluding these rows lifts auto-handled precision from 91.2%
+  # to 96.5% (errors escaping 6 -> 2 per 200). It is kept for that reason and
+  # described by that reason. A rule retained for a purpose it does not serve
+  # is worse than no rule.
+  - id: hardship_possible
+    description: "Ambiguous financial language - correlates with hard cases; hold for review"
+    phrases:
+      - "struggling"
+      - "in arrears"
+      - "payment holiday"
+      - "tough times"
+    requires_human_review: true
+
+
+  - id: vulnerability_indicator
+    description: "Possible vulnerable customer — requires human judgement"
+    phrases:
+      - "bereavement"
+      - "passed away"
+      - "in hospital"
+      - "terminal"
+      - "mental health"
+      - "disability"
+      - "carer"
+    min_urgency: critical
+    requires_human_review: true
+
+  - id: regulatory_escalation
+    description: "Customer invokes a regulator, ombudsman or legal action"
+    phrases:
+      - "ombudsman"
+      - "financial conduct authority"
+      - "regulator"
+      - "legal action"
+      - "my solicitor"
+      - "take you to court"
+      - "small claims"
+    min_urgency: critical
+    requires_human_review: true
+
+  - id: complaint_language
+    description: "Explicit complaint wording triggers formal complaint handling"
+    phrases:
+      - "formal complaint"
+      - "wish to complain"
+      - "unacceptable"
+    min_urgency: high
+
+# ---------------------------------------------------------------------------
+# Branches
+#
+# Each branch runs its steps in order. Steps referencing `from_sla` inherit
+# the timing implied by the classified urgency, so a critical service request
+# and a low-urgency one take the same path with different clocks.
+# ---------------------------------------------------------------------------
+branches:
+
+  billing_dispute:
+    label: "Billing dispute"
+    route_to: "Disputes Team"
+    senior_route_to: "Disputes Team — Senior Handler"
+    escalate_to_senior_at_urgency: high
+    steps:
+      - action: generate_response
+        template: dispute_acknowledgement
+        summary: "Draft acknowledgement confirming the disputed item is under review"
+      - action: suppress_collections
+        summary: "Apply collections hold for the disputed amount while investigation is open"
+        reason: "Dispute open — collections activity suspended per policy"
+      - action: route_to_team
+        summary: "Route to disputes queue with extracted account reference"
+      - action: set_follow_up
+        offset: from_sla
+        summary: "Follow-up reminder set against the urgency SLA"
+      - action: log_outcome
+        status: awaiting_human
+
+  general_enquiry:
+    label: "General enquiry"
+    route_to: "Self-service / Tier 1"
+    escalate_to_senior_at_urgency: critical
+    steps:
+      - action: generate_response
+        template: kb_answer
+        grounded: true
+        summary: "Draft answer grounded in the knowledge base, with source cited"
+      - action: log_outcome
+        status: auto_resolved
+      - action: set_follow_up
+        offset: from_sla
+        conditional_on_urgency: [high, critical]
+        summary: "Follow-up only raised when urgency is elevated"
+
+  service_request:
+    label: "Service request"
+    route_to: "Servicing Operations"
+    senior_route_to: "Servicing Operations — Team Lead"
+    escalate_to_senior_at_urgency: critical
+    steps:
+      - action: generate_response
+        template: service_confirmation
+        summary: "Draft confirmation restating the requested action and expected timeline"
+      - action: route_to_team
+        summary: "Route to servicing with extracted entities attached"
+      - action: start_sla_timer
+        offset: from_sla
+        summary: "SLA clock started against the classified urgency"
+      - action: set_follow_up
+        offset: from_sla
+        summary: "Follow-up task raised for the assigned team"
+      - action: log_outcome
+        status: awaiting_human
+
+  financial_hardship:
+    label: "Financial hardship"
+    route_to: "Customer Support — Hardship Team"
+    senior_route_to: "Customer Support — Hardship Specialist"
+    escalate_to_senior_at_urgency: high
+    # This branch never auto-resolves. The system's job here is to stop
+    # quickly and hand to a trained human, not to be clever.
+    steps:
+      - action: pause_automation
+        summary: "All automated contact and collections activity suspended for this account"
+        reason: "Hardship disclosed — automation paused pending human assessment"
+      - action: escalate
+        summary: "Flagged for mandatory human review before any outbound contact"
+      - action: notify_supervisor
+        summary: "Hardship team supervisor alerted"
+      - action: generate_response
+        template: hardship_holding
+        summary: "Holding acknowledgement drafted — for human approval, not auto-send"
+        auto_send: false
+      - action: set_follow_up
+        offset: from_sla
+        summary: "Priority follow-up against the critical SLA"
+      - action: log_outcome
+        status: escalated
+
+  other:
+    label: "Out of scope / unclassified"
+    route_to: "Triage Queue"
+    escalate_to_senior_at_urgency: critical
+    steps:
+      - action: route_to_team
+        summary: "Routed to human triage — no automated response generated"
+      - action: log_outcome
+        status: awaiting_human
+
+# ---------------------------------------------------------------------------
+# Review queue
+# ---------------------------------------------------------------------------
+review_queue:
+  # Reviewers can change type and urgency. Every override is written to the
+  # audit store with the original model proposal preserved alongside it, which
+  # gives a labelled correction set for future tuning at zero extra cost.
+  allow_type_override: true
+  allow_urgency_override: true
+  capture_override_as_training_signal: true
