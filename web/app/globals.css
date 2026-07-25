@@ -2,28 +2,287 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Neutral defaults. These CSS variables are here as hooks for the polish
-   pass -- redefine them (or replace with Tailwind theme tokens) when you take
-   the design direction. Nothing below asserts a visual identity. */
-:root {
-  --bg: #ffffff;
-  --fg: #1a1a1a;
-  --muted: #6b7280;
-  --line: #e5e7eb;
-  --surface: #f9fafb;
-}
+/* ---------------------------------------------------------------------------
+   One accent, flipped by mode: peach on paper, teal in the dark.
+   Everything brand-coloured reads var(--primary) / var(--ok) / the accent
+   border + shadow vars, so a single token swap re-skins the whole console.
+   Urgency keeps its own ramp, shifted off the orange family in light mode so
+   "brand peach" and "warning amber" never read as the same signal.
+--------------------------------------------------------------------------- */
 
-html,
-body {
-  background: var(--bg);
-  color: var(--fg);
-  -webkit-font-smoothing: antialiased;
-}
+@layer base {
+  :root {
+    --background: #faf9f6;
+    --foreground: #17150f;
+    --card: #fffdfb;
+    --card-foreground: #17150f;
+    --popover: #fffdfb;
+    --popover-foreground: #17150f;
 
-/* Respect reduced-motion from the start (quality floor). */
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    --primary: #c2643f;
+    --primary-foreground: #ffffff;
+    --secondary: #f1efe9;
+    --secondary-foreground: #2a2820;
+    --muted: #f1efe9;
+    --muted-foreground: #6f6d64;
+    --accent: #faebe1;
+    --accent-foreground: #8a421f;
+    --destructive: #a32b1c;
+    --border: #ebe8e1;
+    --input: #e3e0d8;
+    --ring: #c2643f;
+    --radius: 0.75rem;
+
+    /* meaning colours */
+    --u-low: #8a877c;
+    --u-medium: #3a7ca5;
+    --u-high: #b07a1e;
+    --u-critical: #a32b1c;
+    --ok: #c2643f;
+    --guard: #b07a1e;
+    --guard-soft: rgba(176, 122, 30, 0.14);
+
+    /* accent borders + shadows */
+    --border-accent: rgba(194, 100, 63, 0.3);
+    --border-accent-strong: rgba(194, 100, 63, 0.55);
+    --shadow-accent-sm: 0 6px 16px -8px rgba(194, 100, 63, 0.45);
+    --shadow-accent: 0 14px 34px -16px rgba(194, 100, 63, 0.42);
+    --shadow-accent-lg: 0 22px 48px -18px rgba(194, 100, 63, 0.5);
+
+    --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+    --glow:
+      radial-gradient(54% 46% at 8% 4%, rgba(194, 100, 63, 0.16), transparent 62%),
+      radial-gradient(48% 42% at 92% 12%, rgba(194, 100, 63, 0.09), transparent 60%),
+      radial-gradient(42% 40% at 50% 110%, rgba(194, 100, 63, 0.06), transparent 62%);
   }
+
+  .dark {
+    --background: #100f0d;
+    --foreground: #f3f1ea;
+    --card: #1a1815;
+    --card-foreground: #f3f1ea;
+    --popover: #1a1815;
+    --popover-foreground: #f3f1ea;
+
+    --primary: #1f9e84;
+    --primary-foreground: #04201a;
+    --secondary: #242220;
+    --secondary-foreground: #f3f1ea;
+    --muted: #242220;
+    --muted-foreground: #a8a49a;
+    --accent: #173029;
+    --accent-foreground: #7fe0cb;
+    --destructive: #d9624a;
+    --border: #2b2824;
+    --input: #302d29;
+    --ring: #1f9e84;
+
+    --u-low: #a8a49a;
+    --u-medium: #5aa0cf;
+    --u-high: #e0a64a;
+    --u-critical: #d9624a;
+    --ok: #2bb89c;
+    --guard: #e0a64a;
+    --guard-soft: rgba(224, 166, 74, 0.14);
+
+    --border-accent: rgba(43, 184, 156, 0.28);
+    --border-accent-strong: rgba(43, 184, 156, 0.55);
+    --shadow-accent-sm: 0 6px 16px -8px rgba(43, 184, 156, 0.35);
+    --shadow-accent: 0 14px 34px -16px rgba(43, 184, 156, 0.3);
+    --shadow-accent-lg: 0 22px 48px -18px rgba(43, 184, 156, 0.42);
+
+    --glow:
+      radial-gradient(50% 42% at 86% 6%, rgba(31, 158, 132, 0.15), transparent 62%),
+      radial-gradient(58% 46% at 4% 100%, rgba(31, 158, 132, 0.07), transparent 60%),
+      radial-gradient(70% 50% at 50% -12%, rgba(120, 200, 180, 0.05), transparent 58%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--glow);
+  }
+  *,
+  ::before,
+  ::after {
+    transition:
+      background-color 0.3s ease,
+      border-color 0.3s ease,
+      color 0.3s ease;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* every raised surface in the app: accent hairline + accent shadow */
+  .surface {
+    background: var(--card);
+    border: 1px solid var(--border-accent);
+    box-shadow: var(--shadow-accent);
+  }
+
+  .rise {
+    opacity: 0;
+    transform: translateY(14px);
+    animation: rise 0.7s var(--ease) forwards;
+  }
+  .rise2 {
+    opacity: 0;
+    transform: translateY(14px);
+    animation: rise 0.7s 0.12s var(--ease) forwards;
+  }
+  .rise3 {
+    opacity: 0;
+    transform: translateY(14px);
+    animation: rise 0.7s 0.24s var(--ease) forwards;
+  }
+  .page-enter {
+    animation: page-enter 0.6s var(--ease) both;
+  }
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes rise {
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* chapter replacement: the incoming chapter slides in from the scroll
+     direction while the outgoing one has already faded */
+  .chap-down {
+    animation: chap-down 0.52s var(--ease-out) both;
+  }
+  .chap-up {
+    animation: chap-up 0.52s var(--ease-out) both;
+  }
+  @keyframes chap-down {
+    from {
+      transform: translateY(26px);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @keyframes chap-up {
+    from {
+      transform: translateY(-26px);
+    }
+    to {
+      transform: none;
+    }
+  }
+
+  /* scrollable but no visible bar — chapters manage their own overflow */
+  .no-bar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-bar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .rise2,
+  .rise3,
+  .page-enter,
+  .chap-down,
+  .chap-up {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- ResumeMatch interaction mechanics ---------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  a,
+  button,
+  [role="button"],
+  input,
+  select {
+    transition:
+      color 0.3s var(--ease),
+      background-color 0.3s var(--ease),
+      border-color 0.3s var(--ease),
+      box-shadow 0.3s var(--ease),
+      transform 0.3s var(--ease),
+      opacity 0.3s var(--ease);
+  }
+  button:not(:disabled):hover,
+  a.lift:hover,
+  [role="button"]:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-accent-sm);
+  }
+  button:not(:disabled):active,
+  a.lift:active,
+  [role="button"]:active {
+    transform: translateY(0) scale(0.96);
+  }
+
+  .card-lift {
+    transition:
+      transform 0.3s var(--ease),
+      box-shadow 0.3s var(--ease),
+      border-color 0.3s var(--ease);
+  }
+  .card-lift:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-accent-strong);
+    box-shadow: var(--shadow-accent-lg);
+  }
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.45s;
+  animation-timing-function: var(--ease);
+}
+
+.pane {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.pane::-webkit-scrollbar {
+  width: 8px;
+}
+.pane::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+.pane::-webkit-scrollbar-track {
+  background: transparent;
 }
