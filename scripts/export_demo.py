@@ -68,6 +68,62 @@ def _round(x: Any, n: int = 4) -> Any:
     return round(x, n) if isinstance(x, (int, float)) else x
 
 
+def _showcase_head(cards: list[dict]) -> list[dict]:
+    """One model-decided case per urgency band, most urgent first.
+
+    A queue that opens on keyword-floor rows shows cases with no drafted output
+    and a capped confidence, which reads as a system that does nothing. Floor
+    rows stay in the queue — they are the honest degradation story — they just
+    do not lead.
+
+    Within each band the pick is ordered by: a request type not already shown,
+    then an auto-resolved case, then the most drafted output, then the most
+    steps. Type diversity means four branches are visible on the first screen
+    rather than two; the auto-resolved preference means the one thing a reviewer
+    most wants to know — that the system can close a case with a cited answer
+    and no person — is not buried below the fold.
+    """
+    picked: list[dict] = []
+    used_types: set[str] = set()
+    used_ids: set[str] = set()
+
+    for urgency in ("critical", "high", "medium", "low"):
+        pool = [
+            c
+            for c in cards
+            if c.get("urgency") == urgency
+            and c.get("decision_source") != "keyword_fallback"
+            and c.get("case_id") not in used_ids
+        ]
+        if not pool:
+            continue
+
+        def rank(c: dict) -> tuple:
+            return (
+                c.get("request_type") not in used_types,
+                c.get("status") == "auto_resolved",
+                sum(1 for s in (c.get("trace") or []) if s.get("artifact")),
+                c.get("n_actions") or 0,
+            )
+
+        best = max(pool, key=rank)
+        picked.append(best)
+        used_types.add(best.get("request_type"))
+        used_ids.add(best.get("case_id"))
+
+    return picked
+
+
+def _order_cards(cards: list[dict]) -> list[dict]:
+    head = _showcase_head(cards)
+    lead = {c["case_id"] for c in head}
+    rest = [c for c in cards if c["case_id"] not in lead]
+    # Unchanged for the remainder: review-first, then oldest-first, so the
+    # review queue is never empty below the opening spread.
+    rest.sort(key=lambda c: (not c["requires_review"], c["created_at"] or ""))
+    return head + rest
+
+
 def build(db_path: Path) -> dict:
     if not db_path.exists():
         sys.exit(f"ERROR: db not found: {db_path}")
@@ -127,9 +183,7 @@ def build(db_path: Path) -> dict:
         "usage_total_tokens": usage_total,
     }
 
-    # Stable ordering for the card list: review-first, then by creation time,
-    # so the demo review queue is non-empty above the fold.
-    cards.sort(key=lambda c: (not c["requires_review"], c["created_at"] or ""))
+    cards = _order_cards(cards)
 
     return {
         "generated_from": db_path.name,
