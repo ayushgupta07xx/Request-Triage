@@ -7,3 +7,5 @@ httpx>=0.27
 # Serverless API (web/api/classify.py, Vercel Python functions)
 fastapi>=0.111
 uvicorn>=0.30
+# Dev only: safety-property tests (python3 -m pytest -q). Offline, no key.
+pytest>=8.0
