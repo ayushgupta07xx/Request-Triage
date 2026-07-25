@@ -9,7 +9,7 @@ import CaseDetail from "./case-detail";
 import InfoHint from "./info-hint";
 
 type TypeFilter = RequestType | "all";
-type StatusFilter = "any" | "review" | "auto";
+type StatusFilter = "any" | "review" | "auto" | "queued" | "escalated";
 
 export function DatasetToggle({
   dataset,
@@ -83,6 +83,14 @@ export default function Console({
     () => byType.filter((c) => c.status === "auto_resolved").length,
     [byType]
   );
+  const queuedCount = useMemo(
+    () => byType.filter((c) => c.status === "awaiting_human").length,
+    [byType]
+  );
+  const escalatedCount = useMemo(
+    () => byType.filter((c) => c.status === "escalated").length,
+    [byType]
+  );
 
   const filtered = useMemo(
     () =>
@@ -91,7 +99,11 @@ export default function Console({
           ? c.requires_review
           : statusFilter === "auto"
             ? c.status === "auto_resolved"
-            : true
+            : statusFilter === "queued"
+              ? c.status === "awaiting_human"
+              : statusFilter === "escalated"
+                ? c.status === "escalated"
+                : true
       ),
     [byType, statusFilter]
   );
@@ -139,38 +151,82 @@ export default function Console({
 
         {/* outcome — its own group, with counts, so auto-resolved work is
             visible rather than buried at the bottom of a review-first queue */}
+        {/* Outcome. The three partition chips sum to the batch; the flag is a
+            separate axis on its own line, because a case can be queued AND
+            flagged and a single row of chips reads as if they were exclusive.
+            The hint opens sideways into the detail pane - the sidebar is too
+            narrow to hold a panel, and a bottom-anchored one grows off-screen. */}
         <div
-          className="mt-3 flex items-center gap-1.5 border-t px-4 pb-2 pt-2.5"
+          className="mt-3 border-t px-4 pb-2.5 pt-2.5"
           style={{ borderColor: "var(--border-accent)" }}
         >
-          <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/70">
-            Outcome
-          </span>
-          <button
-            onClick={() =>
-              setStatusFilter((s) => (s === "review" ? "any" : "review"))
-            }
-            className={chip(statusFilter === "review")}
-          >
-            Human {reviewCount}
-          </button>
-          <button
-            onClick={() =>
-              setStatusFilter((s) => (s === "auto" ? "any" : "auto"))
-            }
-            title="Cases the system resolved end to end with no human involved"
-            className={chip(statusFilter === "auto")}
-            style={
-              statusFilter === "auto"
-                ? { background: "var(--ok)", color: "var(--primary-foreground)" }
-                : undefined
-            }
-          >
-            Auto {autoCount}
-          </button>
-          <span className="ml-auto font-mono text-[10px] text-muted-foreground/70">
-            {filtered.length}
-          </span>
+          <div className="flex items-center gap-1">
+            <span className="inline-flex items-center gap-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/70">
+              Outcome
+              <InfoHint placement="side">
+                Auto, queued and escalated partition the batch — every case is
+                in exactly one. Flagged cuts across them: the classification
+                itself was uncertain. A queued case is not a failure; the branch
+                prepared the work and a person finishes it.
+              </InfoHint>
+            </span>
+            <span className="ml-auto font-mono text-[10px] text-muted-foreground/70">
+              {filtered.length}
+            </span>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() =>
+                setStatusFilter((v) => (v === "auto" ? "any" : "auto"))
+              }
+              title="Closed by the system with a grounded answer, no human involved"
+              className={chip(statusFilter === "auto")}
+              style={
+                statusFilter === "auto"
+                  ? {
+                      background: "var(--ok)",
+                      color: "var(--primary-foreground)",
+                    }
+                  : undefined
+              }
+            >
+              Auto {autoCount}
+            </button>
+            <button
+              onClick={() =>
+                setStatusFilter((v) => (v === "queued" ? "any" : "queued"))
+              }
+              title="Branch ran and prepared the work; an associate completes it"
+              className={chip(statusFilter === "queued")}
+            >
+              Queued {queuedCount}
+            </button>
+            <button
+              onClick={() =>
+                setStatusFilter((v) => (v === "escalated" ? "any" : "escalated"))
+              }
+              title="Automation paused and handed to a specialist"
+              className={chip(statusFilter === "escalated")}
+            >
+              Escalated {escalatedCount}
+            </button>
+          </div>
+
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/50">
+              Flag
+            </span>
+            <button
+              onClick={() =>
+                setStatusFilter((v) => (v === "review" ? "any" : "review"))
+              }
+              title="Classification was uncertain — a person checks the label"
+              className={chip(statusFilter === "review")}
+            >
+              Uncertain {reviewCount}
+            </button>
+          </div>
         </div>
 
         <div className="pane min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">

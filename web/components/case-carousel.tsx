@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Case, DemoData } from "@/lib/types";
 import { TYPE_LABELS } from "@/lib/types";
 import { UrgencyChip, GuardChip, SourceChip } from "./chips";
+import InfoHint from "./info-hint";
 
 // The product demo as a living card: real cases from the committed batch,
 // cycling on a hold -> fade -> swap rhythm. Each showcases one behaviour the
@@ -56,12 +57,12 @@ export function HandoffBar({ automated }: { automated: number }) {
   const h = 100 - a;
   return (
     <div className="mt-5">
-      <div className="mb-1.5 flex items-center justify-between font-mono text-[10.5px] tracking-[0.06em]">
-        <span style={{ color: "var(--ok)" }}>◀ AUTOMATED {a}%</span>
-        <span className="text-muted-foreground">HUMAN {h}% ▶</span>
+      <div className="mb-2 flex items-center justify-between font-mono text-[11px] tracking-[0.06em]">
+        <span style={{ color: "var(--ok)" }}>◀ RESOLVED {a}%</span>
+        <span className="text-muted-foreground">HANDED OVER {h}% ▶</span>
       </div>
       <div
-        className="relative h-[30px] overflow-hidden rounded-lg bg-secondary"
+        className="relative h-[38px] overflow-hidden rounded-xl bg-secondary"
         style={{ border: "1px solid var(--border-accent)" }}
       >
         <div
@@ -91,8 +92,15 @@ export function HandoffBar({ automated }: { automated: number }) {
           style={{ left: `${a}%`, transform: "translateX(-1px)" }}
         />
       </div>
-      <div className="mt-1.5 text-center font-mono text-[10px] tracking-[0.04em] text-muted-foreground">
-        share of volume each path handles
+      <div className="mt-2.5 flex items-center justify-center gap-1.5 font-mono text-[10.5px] tracking-[0.04em] text-muted-foreground">
+        <span className="text-foreground">100% classified, branched and executed</span>
+        <InfoHint placement="top" label="What the split means">
+          Every request is received, classified, entity-extracted, branched,
+          drafted, routed and logged with no person involved. The split above is
+          only what closed itself — the rest reach an associate already prepared.
+          That is the design: a disputed charge or a hardship disclosure should
+          never close automatically.
+        </InfoHint>
       </div>
     </div>
   );
@@ -126,21 +134,21 @@ export default function CaseCarousel({ data }: { data: DemoData }) {
         transition: `opacity ${FADE}ms cubic-bezier(0.33,0,0.2,1)`,
       }}
     >
-      <div key={c.case_id} className="surface card-lift rounded-2xl p-5">
+      <div key={c.case_id} className="surface card-lift rounded-2xl p-7">
         <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
           <span>Decision</span>
           <SourceChip source={c.decision_source} />
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-2.5">
-          <span className="text-[22px] font-bold leading-tight tracking-tight">
+          <span className="text-[27px] font-bold leading-tight tracking-tight">
             {TYPE_LABELS[c.request_type] ?? c.request_type}
           </span>
           <UrgencyChip urgency={c.urgency} />
         </div>
 
         <div
-          className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t pt-3 font-mono text-[11px] text-muted-foreground"
+          className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t pt-4 font-mono text-[11.5px] text-muted-foreground"
           style={{ borderColor: "var(--border-accent)" }}
         >
           <span>

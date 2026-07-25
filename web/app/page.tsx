@@ -19,7 +19,7 @@ export default function Landing() {
 
   return (
     <div className="relative flex min-h-[calc(100dvh-64px)] flex-col">
-      <main className="page-enter mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-6 py-12 lg:grid-cols-[1.15fr_0.85fr]">
+      <main className="page-enter mx-auto grid w-full max-w-7xl flex-1 items-center gap-14 px-8 py-12 lg:grid-cols-[1fr_1fr]">
         {/* ---- left: thesis ---------------------------------------------- */}
         <div>
           <div className="rise font-mono text-[11px] uppercase tracking-[0.18em] text-primary">
@@ -55,9 +55,9 @@ export default function Landing() {
 
           <div className="rise3 mt-12 grid max-w-md grid-cols-3 gap-6">
             {[
+              ["100%", "executed end-to-end"],
               ["88.0%", "held-out accuracy"],
               ["+41 pts", "vs keyword baseline"],
-              ["100%", "branch completion"],
             ].map(([v, l]) => (
               <div key={l}>
                 <div className="text-[22px] font-bold tracking-tight">{v}</div>
