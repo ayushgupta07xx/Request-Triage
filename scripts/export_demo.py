@@ -164,7 +164,7 @@ def main() -> None:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
-        json.dumps(data, indent=args.indent, ensure_ascii=False),
+        json.dumps(data, indent=args.indent, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 

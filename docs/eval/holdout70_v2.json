@@ -1,0 +1,133 @@
+{
+  "run": "holdout70_v2",
+  "n": 40,
+  "models": [
+    "llama-3.3-70b-versatile"
+  ],
+  "prompt_versions": [
+    "v1"
+  ],
+  "type_accuracy": 0.925,
+  "urgency_exact": 0.625,
+  "urgency_within_one": 0.95,
+  "branch_completion": 1.0,
+  "review_rate_as_run": 0.875,
+  "gate": {
+    "threshold": 0.72,
+    "conf_min": 0.9,
+    "conf_max": 1.0,
+    "distinct_values": [
+      0.9,
+      0.99,
+      1.0
+    ],
+    "inert": true
+  },
+  "per_class": {
+    "billing_dispute": {
+      "support": 8,
+      "precision": 1.0,
+      "recall": 0.875,
+      "f1": 0.9333333333333333
+    },
+    "financial_hardship": {
+      "support": 7,
+      "precision": 0.7777777777777778,
+      "recall": 1.0,
+      "f1": 0.8750000000000001
+    },
+    "general_enquiry": {
+      "support": 9,
+      "precision": 1.0,
+      "recall": 0.8888888888888888,
+      "f1": 0.9411764705882353
+    },
+    "service_request": {
+      "support": 9,
+      "precision": 0.8888888888888888,
+      "recall": 0.8888888888888888,
+      "f1": 0.8888888888888888
+    },
+    "other": {
+      "support": 7,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "confusion_pairs": [
+    {
+      "true": "service_request",
+      "pred": "financial_hardship",
+      "n": 1
+    },
+    {
+      "true": "general_enquiry",
+      "pred": "service_request",
+      "n": 1
+    },
+    {
+      "true": "billing_dispute",
+      "pred": "financial_hardship",
+      "n": 1
+    }
+  ],
+  "urgency": {
+    "exact": 0.625,
+    "within_one": 0.95,
+    "over": 12,
+    "under": 3,
+    "mean_signed_error": 0.225
+  },
+  "by_source": {
+    "guardrail_override": {
+      "n": 5,
+      "type_accuracy": 0.6
+    },
+    "llm_primary": {
+      "n": 35,
+      "type_accuracy": 0.9714285714285714
+    }
+  },
+  "calibration": {
+    "ece": 0.006249999999999983,
+    "buckets": [
+      {
+        "confidence": 0.9,
+        "n": 28,
+        "accuracy": 0.8928571428571429
+      },
+      {
+        "confidence": 0.99,
+        "n": 5,
+        "accuracy": 1.0
+      },
+      {
+        "confidence": 1.0,
+        "n": 7,
+        "accuracy": 1.0
+      }
+    ]
+  },
+  "operating_points": {
+    "confidence_only": {
+      "n_auto": 29,
+      "automation": 0.725,
+      "precision": 0.9655172413793104,
+      "escaped": 1,
+      "escaped_per_100": 2.5
+    },
+    "per_class": {
+      "n_auto": 22,
+      "automation": 0.55,
+      "precision": 1.0,
+      "escaped": 0,
+      "escaped_per_100": 0.0
+    }
+  },
+  "reliability": {
+    "branch_completion": 1.0,
+    "min_actions": 2,
+    "guardrail_firings": 16
+  }
+}
