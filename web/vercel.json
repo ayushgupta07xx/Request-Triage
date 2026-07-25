@@ -3,6 +3,10 @@
     "api/classify.py": {
       "maxDuration": 60,
       "includeFiles": "api/triage/**"
+    },
+    "api/review.py": {
+      "maxDuration": 60,
+      "includeFiles": "api/triage/**"
     }
   }
 }

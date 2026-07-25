@@ -163,6 +163,29 @@ def _execute_step(
 # --------------------------------------------------------------------------
 
 
+def _grounding_gate(
+    status: CaseStatus,
+    grounding_required: bool,
+    kb_hit: Optional[kb.KBMatch],
+) -> CaseStatus:
+    """A branch declaring `grounded: true` must actually have grounded its answer.
+
+    No matched entry - or an ambiguous one, or a topic the knowledge base
+    refuses to answer - hands the case to a person. The config stops being
+    documentation and becomes an enforced contract.
+
+    This is a function because two paths reach it: the model's own run, and a
+    human reviewer's override. The confidence gate above is deliberately
+    bypassed on the override path - a reviewer outranks the model's certainty,
+    that is what review is for. This gate is not bypassed, because it answers a
+    different question. A person being sure of the *label* is not a source for
+    the *draft*, and the draft is what leaves the building unread.
+    """
+    if status == CaseStatus.AUTO_RESOLVED and grounding_required and kb_hit is None:
+        return CaseStatus.AWAITING_HUMAN
+    return status
+
+
 def process_request(
     req: IncomingRequest,
     cfg: WorkflowConfig,
@@ -245,21 +268,71 @@ def process_request(
     if c.requires_human_review and final_status == CaseStatus.AUTO_RESOLVED:
         final_status = CaseStatus.AWAITING_HUMAN
 
-    # A branch declaring `grounded: true` must actually have grounded its
-    # answer. No matched entry - or an ambiguous one, or a topic the
-    # knowledge base refuses to answer - hands the case to a person. The
-    # config stops being documentation and becomes an enforced contract.
-    if (
-        final_status == CaseStatus.AUTO_RESOLVED
-        and grounding_required
-        and kb_hit is None
-    ):
-        final_status = CaseStatus.AWAITING_HUMAN
+    final_status = _grounding_gate(final_status, grounding_required, kb_hit)
 
     case.status = final_status
 
     if store is not None:
         store.insert(case)
+    return case
+
+
+# Summaries of the two review audit steps. The API reads them to answer "has
+# this case already been reviewed" without a schema change, and the console
+# reads them to render the review strip, so they are constants, not literals.
+HUMAN_REVIEW_APPROVED = "Human review: disposition confirmed"
+HUMAN_REVIEW_CORRECTED = "Human review: label corrected"
+
+
+def has_review_step(case: CaseRecord, summary: str) -> bool:
+    """True when this review action is already recorded on the case."""
+    return any(a.summary == summary for a in case.actions)
+
+
+def _proposal_label(case: CaseRecord) -> str:
+    """What the model proposed, for the override audit line.
+
+    `llm_proposal` is the untrusted proposal type and its fields are optional
+    by design, so this reads defensively rather than assuming enums.
+    """
+    proposal = case.classification.llm_proposal
+    if proposal is None:
+        return "no model proposal on record"
+    rt = getattr(proposal.request_type, "value", proposal.request_type)
+    urg = getattr(proposal.urgency, "value", proposal.urgency)
+    return f"{rt} / {urg}"
+
+
+def record_human_approval(
+    case: CaseRecord,
+    reviewer_note: str = "",
+    store: Optional[CaseStore] = None,
+) -> CaseRecord:
+    """Approve: a reviewer confirms the system's disposition of a case.
+
+    Deliberately not a state transition. Inventing a `human_resolved` status
+    would ripple through the status enum, the dashboards, the partition chips
+    and every export, for no operational gain - the case is already where the
+    system decided it belongs, and a reviewer agreeing does not move it. What
+    the confirmation adds is audit evidence that a person looked, so it is
+    recorded as an audit step and nothing else changes.
+    """
+    note = reviewer_note.strip()
+    cls = case.classification
+    case.actions.append(
+        ActionResult(
+            action=ActionType.LOG_OUTCOME,
+            outcome=ActionOutcome.SUCCEEDED,
+            summary=HUMAN_REVIEW_APPROVED,
+            artifact=(
+                f"Reviewer confirmed this case as {cls.request_type.value} / "
+                f"{cls.urgency.value} and left it in status {case.status.value}."
+                + (f" Note: {note}" if note else "")
+            ),
+        )
+    )
+    if store is not None:
+        store.update_payload(case)
     return case
 
 
@@ -269,19 +342,39 @@ def apply_human_override(
     new_urgency: Urgency,
     reviewer_note: str,
     cfg: WorkflowConfig,
-    store: CaseStore,
+    store: Optional[CaseStore] = None,
 ) -> CaseRecord:
     """
     Review-queue override. The original model proposal is preserved inside
     the classification; the corrected label becomes the acted-on decision and
     the case is re-run through the (possibly different) branch.
+
+    Persistence is the caller's choice: pass a store and the corrected record
+    is written back over the original row - same case_id, so the audit trail
+    stays one case with a longer history rather than becoming two cases - or
+    pass none and take the record.
     """
+    prior_type = case.classification.request_type
+    prior_urgency = case.classification.urgency
+    prior_status = case.status
+    note = reviewer_note.strip()
+
     corrected = case.classification.model_copy(deep=True)
     corrected.request_type = new_type
     corrected.urgency = new_urgency
     corrected.decision_source = DecisionSource.HUMAN_OVERRIDE
     corrected.requires_human_review = False
-    corrected.review_reason = f"human override: {reviewer_note}"
+    corrected.review_reason = f"human override: {note or 'no note given'}"
+    # The model's confidence described a label the model chose. Once a person
+    # has changed that label, carrying the number forward would attach it to a
+    # decision the model never made - wrong in the audit store, not just on
+    # screen. A human decision carries no probability; the model's own numbers
+    # stay readable in llm_proposal, which is the point of keeping them apart.
+    corrected.confidence = 1.0
+    corrected.rationale = (
+        f"Corrected by a human reviewer from {prior_type.value} / "
+        f"{prior_urgency.value}." + (f" Note: {note}" if note else "")
+    )
 
     rerun = CaseRecord(
         case_id=case.case_id,
@@ -292,9 +385,25 @@ def apply_human_override(
         status=CaseStatus.NEW,
         created_at=case.created_at,
     )
+
+    # The corrected branch runs for real, knowledge-base lookup included. A
+    # reviewer's label decides which branch executes; it never decides whether
+    # that branch may close a case without a person.
+    kb_hit = kb.lookup(case.request.subject, case.request.body, corrected.entities)
     final_status = CaseStatus.AWAITING_HUMAN
+    grounding_required = False
     for step in cfg.steps_for(new_type, new_urgency):
-        result = _execute_step(step, rerun, cfg)
+        if step.get("grounded"):
+            grounding_required = True
+        try:
+            result = _execute_step(step, rerun, cfg, kb_hit)
+        except Exception as exc:  # a failing step must not kill the branch
+            result = ActionResult(
+                action=ActionType(step["action"]),
+                outcome=ActionOutcome.FAILED,
+                summary=step.get("summary", ""),
+                error=f"{type(exc).__name__}: {exc}",
+            )
         rerun.actions.append(result)
         if result.due_at and (
             rerun.sla_due_at is None or result.due_at < rerun.sla_due_at
@@ -302,6 +411,27 @@ def apply_human_override(
             rerun.sla_due_at = result.due_at
         if step.get("action") == "log_outcome" and step.get("status"):
             final_status = CaseStatus(step["status"])
-    rerun.status = final_status
-    store.update_payload(rerun)
+
+    rerun.status = _grounding_gate(final_status, grounding_required, kb_hit)
+
+    # Three layers on one line: what the model said, what the system did with
+    # it, what the reviewer decided. This is the training pair, and it is also
+    # what an auditor asks for first.
+    rerun.actions.append(
+        ActionResult(
+            action=ActionType.LOG_OUTCOME,
+            outcome=ActionOutcome.SUCCEEDED,
+            summary=HUMAN_REVIEW_CORRECTED,
+            artifact=(
+                f"model proposed {_proposal_label(case)} · "
+                f"system decided {prior_type.value} / {prior_urgency.value} "
+                f"({prior_status.value}) · "
+                f"reviewer corrected to {new_type.value} / {new_urgency.value} "
+                f"({rerun.status.value})." + (f" Note: {note}" if note else "")
+            ),
+        )
+    )
+
+    if store is not None:
+        store.update_payload(rerun)
     return rerun
