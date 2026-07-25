@@ -5,7 +5,12 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-data/runs/
+data/runs/*
+# the four runs that back every published number (run_eval reads .jsonl)
+!data/runs/corpus_test70_v2.jsonl
+!data/runs/corpus_test_floor.jsonl
+!data/runs/holdout70_v2.jsonl
+!data/runs/corpus_dev_bulk.jsonl
 .streamlit/secrets.toml
 .ruff_cache/
 patch_*.py
