@@ -9,6 +9,7 @@ import {
   type DatasetKey,
   type DatasetMeta,
 } from "@/lib/data";
+import Link from "next/link";
 import QueueRow from "./queue-row";
 import CaseDetail from "./case-detail";
 import InfoHint from "./info-hint";
@@ -79,6 +80,11 @@ export default function Console({
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const data = all[dataset];
+
+  // The live tier starts empty and stays empty until something is processed
+  // through it — unlike the baked batches, which ship with the deploy. That is
+  // a normal state, not a filter that hid everything, so it gets its own copy.
+  const liveEmpty = dataset === "live" && data.cases.length === 0;
 
   // Counts are computed over the type-filtered slice, so the status group
   // always answers "how much of what I'm looking at did the machine close".
@@ -270,9 +276,11 @@ export default function Console({
         <div className="pane min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
           {filtered.length === 0 ? (
             <p className="px-3 pt-6 text-center text-[12px] leading-relaxed text-muted-foreground">
-              {statusFilter === "auto"
-                ? "Nothing auto-resolved here — on the held-out tier the derived policy automates nothing, by design."
-                : "No cases match. Clear a filter."}
+              {liveEmpty
+                ? "Nothing processed on this tier yet."
+                : statusFilter === "auto"
+                  ? "Nothing auto-resolved here — on the held-out tier the derived policy automates nothing, by design."
+                  : "No cases match. Clear a filter."}
             </p>
           ) : (
             filtered.map((c) => (
@@ -311,6 +319,22 @@ export default function Console({
               reviewable={dataset === "live"}
               onReviewed={onReviewed}
             />
+          </div>
+        ) : liveEmpty ? (
+          <div className="max-w-[44ch] pt-8">
+            <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              Live queue
+            </div>
+            <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+              Nothing processed yet. Run a request through{" "}
+              <Link
+                href="/live"
+                className="text-foreground underline decoration-dotted underline-offset-4 transition-colors hover:decoration-solid"
+              >
+                Live
+              </Link>{" "}
+              and it lands here as a real case — open it, review it, correct it.
+            </p>
           </div>
         ) : (
           <p className="pt-8 text-[13px] text-muted-foreground">
