@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from .classifier import classify
+from .classifier import FLOOR_MODEL_NAME, classify
 from .config import WorkflowConfig
 from .llm import Waterfall
 from .schemas import (
@@ -289,18 +289,28 @@ def has_review_step(case: CaseRecord, summary: str) -> bool:
     return any(a.summary == summary for a in case.actions)
 
 
-def _proposal_label(case: CaseRecord) -> str:
-    """What the model proposed, for the override audit line.
+def _prior_proposal_line(case: CaseRecord) -> str:
+    """What the earlier layer proposed, for the override audit line.
 
-    `llm_proposal` is the untrusted proposal type and its fields are optional
-    by design, so this reads defensively rather than assuming enums.
+    `llm_proposal` holds whatever classified the case first. When every
+    provider is exhausted the classifier falls back to `keyword_classify` and
+    stores that in the same slot, so naming a model as the author of a floor
+    guess would put a provenance error on the one line an auditor reads first.
+    The actor comes from `model_name`, which is set only when a provider
+    actually answered. Fields are still read defensively: the proposal is the
+    untrusted type by design.
     """
     proposal = case.classification.llm_proposal
     if proposal is None:
-        return "no model proposal on record"
+        return "no earlier proposal on record"
     rt = getattr(proposal.request_type, "value", proposal.request_type)
     urg = getattr(proposal.urgency, "value", proposal.urgency)
-    return f"{rt} / {urg}"
+    # `model_name` is "keyword-floor" on a floor row, not empty, so this has
+    # to compare against the sentinel. Testing the field for truthiness credits
+    # a model that never ran.
+    spoke = case.classification.model_name not in (None, "", FLOOR_MODEL_NAME)
+    actor = "model proposed" if spoke else "keyword floor read"
+    return f"{actor} {rt} / {urg}"
 
 
 def record_human_approval(
@@ -423,7 +433,7 @@ def apply_human_override(
             outcome=ActionOutcome.SUCCEEDED,
             summary=HUMAN_REVIEW_CORRECTED,
             artifact=(
-                f"model proposed {_proposal_label(case)} · "
+                f"{_prior_proposal_line(case)} · "
                 f"system decided {prior_type.value} / {prior_urgency.value} "
                 f"({prior_status.value}) · "
                 f"reviewer corrected to {new_type.value} / {new_urgency.value} "

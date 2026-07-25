@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import pytest
 
+from triage.classifier import FLOOR_MODEL_NAME
 from triage.config import load_config
 from triage.engine import (
     HUMAN_REVIEW_APPROVED,
@@ -143,3 +144,59 @@ def test_approve_records_a_person_and_moves_nothing(cfg):
     assert updated.classification.urgency == cls.urgency
     assert updated.classification.decision_source == cls.decision_source
     assert has_review_step(updated, HUMAN_REVIEW_APPROVED)
+
+
+def _floor_case(cfg):
+    """A case classified end to end by the deterministic floor.
+
+    No waterfall means no provider, so `classify` falls through to
+    `keyword_classify` and stamps the floor sentinel on `model_name`. Built by
+    the real code path rather than posed: the first version of these tests set
+    `model_name=None` by hand and passed green against a system that was still
+    printing the wrong actor on every live floor row.
+    """
+    req = IncomingRequest(
+        channel=Channel.SHARED_INBOX,
+        sender="reviewer@demo",
+        subject="Incorrect fee on my statement",
+        body="There is a charge on my statement I did not agree to.",
+    )
+    return process_request(req, cfg, store=None, waterfall=None)
+
+
+def test_audit_line_names_the_floor_when_the_floor_decided(cfg):
+    """A floor guess is not a model proposal, and the audit line must not say so."""
+    case = _floor_case(cfg)
+    assert (
+        case.classification.model_name == FLOOR_MODEL_NAME
+    ), "fixture did not go through the floor — the rest of this test proves nothing"
+
+    updated = apply_human_override(
+        case, RequestType.SERVICE_REQUEST, Urgency.HIGH, "", cfg
+    )
+
+    line = next(
+        a.artifact for a in updated.actions if a.summary == HUMAN_REVIEW_CORRECTED
+    )
+    assert "keyword floor read" in line
+    assert "model proposed" not in line
+
+
+def test_audit_line_names_the_model_when_a_model_answered(cfg):
+    """The model half is posed: no provider is reachable from an offline test.
+
+    Only the sentinel separates the two cases, so the sentinel is what this
+    asserts against - and the floor half above is built for real.
+    """
+    case = _floor_case(cfg)
+    case.classification.model_name = "llama-3.3-70b-versatile"
+
+    updated = apply_human_override(
+        case, RequestType.SERVICE_REQUEST, Urgency.HIGH, "", cfg
+    )
+
+    line = next(
+        a.artifact for a in updated.actions if a.summary == HUMAN_REVIEW_CORRECTED
+    )
+    assert "model proposed" in line
+    assert "keyword floor read" not in line

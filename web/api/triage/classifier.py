@@ -159,6 +159,15 @@ _URGENCY_KEYWORDS: dict[Urgency, list[str]] = {
 }
 
 
+# Stamped on `model_name` when no provider answered and the deterministic
+# floor decided instead. It is a sentinel, not a model: anything reading
+# provenance must compare against this rather than test the field for
+# emptiness, which is how an audit line once credited a model that never ran.
+# The value is unchanged from the literal it replaces, so `auto_policies`
+# lookups and every committed run file still match.
+FLOOR_MODEL_NAME = "keyword-floor"
+
+
 def keyword_classify(req: IncomingRequest) -> LLMClassification:
     """Deterministic floor. Cheap, explainable, and honest about its limits."""
     text = f"{req.subject}\n{req.body}".lower()
@@ -294,7 +303,7 @@ def classify(
     if proposal is None:
         proposal = keyword_classify(req)
         source = DecisionSource.KEYWORD_FALLBACK
-        model_name = "keyword-floor"
+        model_name = FLOOR_MODEL_NAME
         latency_ms = int((time.perf_counter() - started) * 1000)
 
     guarded, triggers, force_review = apply_guardrails(req, proposal, cfg)
