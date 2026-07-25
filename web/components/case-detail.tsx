@@ -83,6 +83,10 @@ const HUMAN_STEP = "Human review:";
 // separate client-side flag that could drift from the store.
 const HUMAN_APPROVED_STEP = "Human review: disposition confirmed";
 
+// Mirrors HUMAN_REVIEW_CORRECTED in triage/engine.py. Used to fold a long
+// correction history, never to drop it.
+const HUMAN_CORRECTED_STEP = "Human review: label corrected";
+
 const REVIEW_TYPES = [
   "billing_dispute",
   "general_enquiry",
@@ -282,6 +286,22 @@ export default function CaseDetail({
   const canReview =
     reviewable &&
     (c.status === "awaiting_human" || c.status === "escalated");
+
+  // A repeatedly corrected case would otherwise stack an unbounded number of
+  // near-identical blocks and push the branch's own output off the pane. The
+  // two most recent corrections stay open; older ones collapse to a single
+  // line. This is a display cap only — every one of them is still in the
+  // payload, the store, and the API response.
+  const [showAllCorrections, setShowAllCorrections] = useState(false);
+  const correctionIndices = c.trace
+    .map((s, n) => (s.summary === HUMAN_CORRECTED_STEP ? n : -1))
+    .filter((n) => n >= 0);
+  const hiddenCorrections = new Set<number>(
+    showAllCorrections
+      ? []
+      : correctionIndices.slice(0, Math.max(0, correctionIndices.length - 2))
+  );
+  const firstHiddenCorrection = correctionIndices[0] ?? -1;
 
   const chapters = ["Decision", "Decision path", "Execution"] as const;
   const total = chapters.length;
@@ -583,6 +603,38 @@ export default function CaseDetail({
                   <Eyebrow>Executed · {c.n_actions} steps</Eyebrow>
                   <ol className="mt-5 pl-1">
                     {c.trace.map((s, n) => {
+                      if (hiddenCorrections.has(n)) {
+                        // One line stands in for the whole folded run, drawn at
+                        // the position of the earliest one so the timeline keeps
+                        // its order.
+                        if (n !== firstHiddenCorrection) return null;
+                        return (
+                          <li key={n} className="relative pb-6 pl-7">
+                            <span
+                              aria-hidden
+                              className="absolute left-[4px] top-3.5 h-full w-px"
+                              style={{ background: "var(--border)" }}
+                            />
+                            <span
+                              aria-hidden
+                              className="absolute left-0 top-[5px] h-[9px] w-[9px] rounded-full border-2"
+                              style={{
+                                borderColor: "var(--border)",
+                                background: "var(--card)",
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowAllCorrections(true)}
+                              className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70 transition-colors hover:text-foreground"
+                            >
+                              {hiddenCorrections.size} earlier correction
+                              {hiddenCorrections.size === 1 ? "" : "s"} · kept in
+                              the record · show
+                            </button>
+                          </li>
+                        );
+                      }
                       const human = (s.summary ?? "").startsWith(HUMAN_STEP);
                       const failed = s.outcome === "failed";
                       const summary = stepSummary(s);
