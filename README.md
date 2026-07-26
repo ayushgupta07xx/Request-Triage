@@ -48,7 +48,7 @@ Every number below is measured on a held-out split that was executed once and sc
 | | What | Where |
 |---|---|---|
 | 🌐 **Live app** | Opens cold in demo mode from committed batch data — no keys, no network | **[handoff-triage.vercel.app](https://handoff-triage.vercel.app)** |
-| ▶ **Demo** | 3-minute narrated walkthrough: classification, guardrail escalation, duplicate suppression, provider outage, human override | **[Watch](DEMO_VIDEO_URL_HERE)** |
+| ▶ **Demo** | 3-minute narrated walkthrough: classification, guardrail escalation, duplicate suppression, provider outage, human override | **[Watch](https://drive.google.com/file/d/1VyTk0n66fB1LlFOP8a9ld2dlqyUwe834/view?usp=sharing)** |
 | 🖥️ **Live mode** | Paste your own message, run it through the real pipeline, simulate a provider outage, override the result | [/live](https://handoff-triage.vercel.app/live) |
 | 📈 **Reproduce the numbers** | Recompute every published figure from committed runs, zero API calls | [below](#setup) |
 
