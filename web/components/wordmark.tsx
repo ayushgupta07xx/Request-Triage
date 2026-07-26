@@ -1,14 +1,12 @@
 "use client";
 
-// The product mark, drawn from the same vocabulary as the rest of the app: a
-// hollow ring, a connector, a filled dot. A person is handed to, and the
-// accent lands on the arrival — the same rhythm as the wordmark itself, where
-// "Hand" is neutral and "off" carries the colour.
+// The product mark: one request arrives, and it leaves one of two ways —
+// closed by the machine, or prepared and handed to a person. The accent is on
+// the branch the system completes itself, which is also the smaller of the
+// two in practice; the neutral branch ends in a hollow ring, a person.
 //
-// The two ends are deliberately NOT the same r. SVG centres a stroke on its
-// path, so a ring at r=2.5 with a 1.2 stroke reaches an outer radius of 3.1,
-// while a filled disc renders at exactly its r. The dot is set at 2.9 rather
-// than 3.1 because a solid shape reads optically heavier than an outline.
+// It is the landing page's own split bar, reduced to a glyph, and it carries
+// the same rhythm as the wordmark: neutral first, accent on the resolution.
 export default function Wordmark({
   size = "nav",
 }: {
@@ -16,34 +14,49 @@ export default function Wordmark({
 }) {
   const nav = size === "nav";
   const px = nav ? 21 : 16;
-  const mark = nav ? 20 : 16;
+  const mark = nav ? 21 : 17;
 
   return (
     <span className="inline-flex items-center gap-2.5">
       <svg
         width={mark}
         height={mark}
-        viewBox="0 0 20 20"
+        viewBox="0 0 64 64"
         fill="none"
         aria-hidden
         className="shrink-0 text-muted-foreground"
       >
-        <circle
-          cx="5"
-          cy="10"
-          r="2.5"
+        <path
+          d="M12 32h13"
           stroke="currentColor"
-          strokeWidth="1.2"
-          opacity="0.75"
+          strokeWidth="3.4"
+          strokeLinecap="round"
+          opacity="0.8"
         />
         <path
-          d="M8.7 10 H11.4"
-          stroke="currentColor"
-          strokeWidth="1.2"
+          d="M25 32c7 0 8-9 15-9"
+          fill="none"
+          stroke="var(--primary)"
+          strokeWidth="3.4"
           strokeLinecap="round"
-          opacity="0.75"
         />
-        <circle cx="15.05" cy="10" r="2.9" fill="var(--primary)" />
+        <path
+          d="M25 32c7 0 8 9 15 9"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3.4"
+          strokeLinecap="round"
+          opacity="0.8"
+        />
+        <circle cx="46" cy="23" r="6" fill="var(--primary)" />
+        <circle
+          cx="46"
+          cy="41"
+          r="5"
+          stroke="currentColor"
+          strokeWidth="3"
+          opacity="0.8"
+        />
       </svg>
       <span
         className="select-none font-bold leading-none"

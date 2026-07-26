@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Handoff">
+  <rect width="64" height="64" rx="14" fill="#100f0d"/>
+  <path d="M12 32h13" stroke="#a8a49a" stroke-width="3" stroke-linecap="round"/>
+  <path d="M25 32c7 0 8-9 15-9" fill="none" stroke="#2bb89c" stroke-width="3" stroke-linecap="round"/>
+  <path d="M25 32c7 0 8 9 15 9" fill="none" stroke="#a8a49a" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="46" cy="23" r="6" fill="#2bb89c"/>
+  <circle cx="46" cy="41" r="5" fill="none" stroke="#a8a49a" stroke-width="3"/>
+</svg>

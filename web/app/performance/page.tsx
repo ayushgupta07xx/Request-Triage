@@ -12,7 +12,12 @@ export default function PerformancePage() {
   // would imply they had been graded. The toggle here never offers Live, and
   // this page never fetches it.
   const [all, setAll] = useState<Record<BakedKey, DemoData> | null>(null);
-  const [dataset, setDataset] = useState<BakedKey>("test100");
+  // Opens on the development batch. It is the left-hand option in the toggle,
+  // so the only move available is rightward, and it is the only batch where
+  // the automation machinery is visible at all -- held-out automates nothing
+  // by derived policy, so leading with it shows a column of zeros before the
+  // reader has any reason to read that as restraint.
+  const [dataset, setDataset] = useState<BakedKey>("dev200");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {

@@ -15,6 +15,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  // Absolute origin for og:image and twitter:image. Without it Next
+  // resolves them against localhost and the link preview never renders.
+  metadataBase: new URL("https://handoff-triage.vercel.app"),
   title: "Handoff — Northgate Servicing",
   description:
     "The model decides. The state machine executes. Incoming request triage for a consumer lending and mortgage servicing operations desk.",

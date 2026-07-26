@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Case, DemoData } from "@/lib/types";
+import type { Case, DemoData, Urgency } from "@/lib/types";
 import { TYPE_LABELS } from "@/lib/types";
-import { UrgencyChip, GuardChip, SourceChip } from "./chips";
+import {
+  UrgencyChip,
+  SourceChip,
+  StatusChip,
+  SecondaryChip,
+} from "./chips";
 import InfoHint from "./info-hint";
 
 // The product demo as a living card: real cases from the committed batch,
@@ -18,26 +23,43 @@ const FIRST_HOLD = 1600;
 const HOLD = 2700;
 const FADE = 550;
 
+// One slot per urgency level, so a visitor sees the whole ramp the desk
+// routes on. Within a slot, a case whose terminal status is not yet on screen
+// wins, then whichever demonstrates most -- a guardrail catch, a floor
+// decision, a flagged second intent. Nothing is invented: a level this batch
+// cannot supply is skipped rather than filled with a lookalike.
+const URGENCY_SHOWCASE: Urgency[] = ["critical", "high", "medium", "low"];
+
+function interest(c: Case): number {
+  return (
+    (c.guardrail_triggers?.length ? 3 : 0) +
+    (c.decision_source === "keyword_fallback" ? 2 : 0) +
+    (c.secondary_type ? 1 : 0)
+  );
+}
+
 function pickShowcase(cases: Case[]): Case[] {
   const picks: Case[] = [];
-  const used = new Set<string>();
-  const take = (c?: Case) => {
-    if (c && !used.has(c.case_id)) {
-      picks.push(c);
-      used.add(c.case_id);
-    }
-  };
-  take(
-    cases.find(
-      (c) => c.was_overridden && (c.guardrail_triggers?.length ?? 0) > 0
-    )
-  );
-  take(cases.find((c) => c.status === "auto_resolved"));
-  take(cases.find((c) => c.decision_source === "keyword_fallback"));
-  take(
-    cases.find((c) => c.secondary_type && c.decision_source === "llm_primary")
-  );
-  if (picks.length === 0) picks.push(...cases.slice(0, 3));
+  const usedIds = new Set<string>();
+  const usedStatus = new Set<string>();
+
+  for (const u of URGENCY_SHOWCASE) {
+    const pool = cases.filter(
+      (c) => c.urgency === u && !usedIds.has(c.case_id)
+    );
+    if (pool.length === 0) continue;
+    pool.sort(
+      (a, b) =>
+        Number(usedStatus.has(a.status)) - Number(usedStatus.has(b.status)) ||
+        interest(b) - interest(a)
+    );
+    const chosen = pool[0];
+    picks.push(chosen);
+    usedIds.add(chosen.case_id);
+    usedStatus.add(chosen.status);
+  }
+
+  if (picks.length === 0) picks.push(...cases.slice(0, 4));
   return picks;
 }
 
@@ -48,6 +70,10 @@ function storyOf(c: Case): string {
   if (c.decision_source === "keyword_fallback")
     return "provider outage · deterministic floor · routed to a human";
   if (c.secondary_type) return "second intent flagged, not dropped";
+  if (c.status === "escalated")
+    return "automation paused · handed to a specialist";
+  if (c.status === "awaiting_human")
+    return "branch prepared the work · an associate finishes it";
   return "classified, executed, audited";
 }
 
@@ -152,36 +178,43 @@ export default function CaseCarousel({ data }: { data: DemoData }) {
         transition: `opacity ${FADE}ms cubic-bezier(0.33,0,0.2,1)`,
       }}
     >
+      {/* Identical to the Decision card in components/case-detail.tsx: same
+          order, same chips, same divider, same meta row. A visitor should not
+          meet one card here and a different one a click later. */}
       <div key={c.case_id} className="surface card-lift rounded-2xl p-8">
-        <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-          <span>Decision</span>
-          <SourceChip source={c.decision_source} />
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+          Decision
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-2.5">
+        <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
           <span className="text-[30px] font-bold leading-tight tracking-tight">
             {TYPE_LABELS[c.request_type] ?? c.request_type}
           </span>
           <UrgencyChip urgency={c.urgency} />
+          {c.secondary_type ? <SecondaryChip type={c.secondary_type} /> : null}
+          <span className="ml-auto">
+            <StatusChip status={c.status} />
+          </span>
         </div>
 
-        <div
-          className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t pt-4 font-mono text-[11.5px] text-muted-foreground"
-          style={{ borderColor: "var(--border-accent)" }}
-        >
+        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t pt-3.5 font-mono text-[11.5px] text-muted-foreground">
           <span>
             CONF{" "}
             <span className="text-foreground">
               {typeof c.confidence === "number" ? c.confidence.toFixed(2) : "—"}
             </span>
           </span>
-          {c.guardrail_triggers?.map((g) => <GuardChip key={g} id={g} />)}
-          {typeof c.latency_ms === "number" ? <span>{c.latency_ms}MS</span> : null}
+          <SourceChip source={c.decision_source} />
+          {typeof c.latency_ms === "number" ? (
+            <span>{c.latency_ms}ms</span>
+          ) : null}
         </div>
+      </div>
 
-        <div className="mt-3 font-mono text-[10px] tracking-[0.05em] text-muted-foreground">
-          {storyOf(c)}
-        </div>
+      {/* What this card is here to show. Outside the card on purpose — it is
+          a caption for a landing page, not part of the product's own card. */}
+      <div className="mt-3 text-center font-mono text-[10.5px] tracking-[0.05em] text-muted-foreground">
+        {storyOf(c)}
       </div>
 
       {showcase.length > 1 ? (

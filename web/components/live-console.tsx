@@ -621,7 +621,8 @@ export default function LiveConsole() {
             disabled={!subject && !body}
             title="Clear the subject and message"
             aria-label="Clear the subject and message"
-            className="lift flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground ring-1 ring-border transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+            style={{ color: "var(--primary)" }}
+            className="lift flex h-7 w-7 items-center justify-center rounded-full ring-1 ring-border transition-opacity hover:opacity-75 disabled:cursor-not-allowed disabled:opacity-30"
           >
             <svg
               width="13"

@@ -234,7 +234,7 @@ export default function Performance({
                 );
               })}
             </div>
-            <div className="mt-2.5 text-center font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground opacity-70">
+            <div className="mt-4 text-center font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground opacity-70">
               100% classified, branched and executed
             </div>
           </div>

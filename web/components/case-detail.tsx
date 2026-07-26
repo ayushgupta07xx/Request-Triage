@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { Case, TraceStep } from "@/lib/types";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import type { Case, CaseStatus, TraceStep } from "@/lib/types";
 import { TYPE_LABELS } from "@/lib/types";
 import InfoHint from "./info-hint";
 import {
@@ -76,14 +76,46 @@ const ACTION_LABELS: Record<string, string> = {
 // sentence before it is already carrying the meaning.
 const HELD_SUFFIX = " (held for human approval)";
 
-function stepSummary(s: TraceStep): string | null {
-  const text = (s.summary ?? "").trim();
+// A grounded draft names its source in the body of the artifact. The branch's
+// configured summary claims one unconditionally, so the claim is checked
+// against the draft itself before it is shown.
+const GROUNDED_CLAIM = /grounded in the knowledge base/i;
+const CITES_SOURCE = /(^|\n)\s*Source:/i;
+const UNGROUNDED_SUMMARY =
+  "Draft prepared, but no knowledge-base entry matched \u2014 nothing to cite, so the case goes to a person";
+
+// The enquiry branch declares log_outcome as auto_resolved and its summary
+// says the case closed without a person. The gates can revoke that status and
+// the configured sentence does not know it. Fixing the config only reaches
+// runs that happen afterwards, so the console reconciles the claim against the
+// status the case actually ended in -- which covers the committed batches and
+// every case already in the store.
+const CLOSED_CLAIM = /closed without a person/i;
+const HELD_OUTCOME_SUMMARY =
+  "Outcome logged; the drafted answer is on the case and it stays with a person";
+
+function stepSummary(s: TraceStep, status?: CaseStatus): string | null {
+  let text = (s.summary ?? "").trim();
   if (!text || text === s.action) return null;
   if (text.endsWith(HELD_SUFFIX)) {
     const head = text.slice(0, -HELD_SUFFIX.length).trim();
-    if (/human approval/i.test(head)) return head || null;
+    if (/human approval/i.test(head)) text = head;
   }
-  return text;
+  if (
+    s.action === "generate_response" &&
+    GROUNDED_CLAIM.test(text) &&
+    !CITES_SOURCE.test(s.artifact ?? "")
+  ) {
+    return UNGROUNDED_SUMMARY;
+  }
+  if (
+    s.action === "log_outcome" &&
+    CLOSED_CLAIM.test(text) &&
+    status !== "auto_resolved"
+  ) {
+    return HELD_OUTCOME_SUMMARY;
+  }
+  return text || null;
 }
 
 // Mirrors the two constants in triage/engine.py. A human review step is not a
@@ -98,6 +130,67 @@ const HUMAN_APPROVED_STEP = "Human review: disposition confirmed";
 // Mirrors HUMAN_REVIEW_CORRECTED in triage/engine.py. Used to fold a long
 // correction history, never to drop it.
 const HUMAN_CORRECTED_STEP = "Human review: label corrected";
+
+// The SLA window as a duration rather than a deadline. A countdown against a
+// batch executed weeks ago would read as nonsense; the window itself is the
+// operationally meaningful number and it is stable forever.
+function windowBetween(from: string | null, to: string | null): string | null {
+  if (!from || !to) return null;
+  const ms = new Date(to).getTime() - new Date(from).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const m = Math.round(ms / 60000);
+  if (m < 60) return `${m}m`;
+  if (m < 1440) return `${Math.round(m / 60)}h`;
+  return `${Math.round(m / 1440)}d`;
+}
+
+// Outbound copy. This is the only artifact a customer would ever read, so it
+// is the only one that gets a container -- and the strip says plainly whether
+// it is going anywhere.
+function DraftedReply({ text, held }: { text: string; held: boolean }) {
+  return (
+    <div
+      className="mt-3 max-w-[74ch] overflow-hidden rounded-xl"
+      style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+    >
+      <div
+        className="flex items-center justify-between gap-3 px-4 py-2"
+        style={{ background: "var(--secondary)" }}
+      >
+        <span className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-muted-foreground">
+          Drafted reply
+        </span>
+        <span
+          className="font-mono text-[9.5px] uppercase tracking-[0.16em]"
+          style={{ color: held ? "var(--guard)" : "var(--ok)" }}
+        >
+          {held ? "held for approval" : "sent"}
+        </span>
+      </div>
+      <p className="whitespace-pre-wrap px-4 py-3.5 text-[13px] leading-[1.7] text-foreground/85">
+        {text}
+      </p>
+    </div>
+  );
+}
+
+// An audit record is evidence, not correspondence. It gets no container at
+// all: a rule and a mono line, so it can never be mistaken at a glance for
+// something that left the building.
+function AuditRecord({ text }: { text: string }) {
+  return (
+    <div className="mt-2.5 flex max-w-[82ch] items-start gap-3">
+      <span
+        aria-hidden
+        className="mt-[8px] h-px w-4 shrink-0"
+        style={{ background: "var(--border)" }}
+      />
+      <span className="whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-muted-foreground">
+        {text}
+      </span>
+    </div>
+  );
+}
 
 const REVIEW_TYPES = [
   "billing_dispute",
@@ -182,21 +275,45 @@ function DecisionPath({ c, overridden }: { c: Case; overridden: boolean }) {
       label: "Model proposed",
       hint: "The LLM's classification is an untrusted proposal. Deterministic guardrails see it before it becomes a decision, and the audit trail keeps both.",
       body: (
-        <div className="text-[16px] text-muted-foreground">
-          <span className="font-semibold text-foreground">
-            {TYPE_LABELS[
-              c.proposal.request_type as keyof typeof TYPE_LABELS
-            ] ?? c.proposal.request_type}
-          </span>{" "}
-          at{" "}
-          <span style={{ color: `var(--u-${c.proposal.urgency})` }}>
-            {c.proposal.urgency}
-          </span>
-          {typeof c.proposal.confidence === "number" ? (
-            <span className="font-mono text-[12px] text-muted-foreground/70">
-              {" "}
-              · {c.proposal.confidence.toFixed(2)}
+        <div>
+          <div className="text-[16px] text-muted-foreground">
+            <span className="font-semibold text-foreground">
+              {TYPE_LABELS[
+                c.proposal.request_type as keyof typeof TYPE_LABELS
+              ] ?? c.proposal.request_type}
+            </span>{" "}
+            at{" "}
+            <span style={{ color: `var(--u-${c.proposal.urgency})` }}>
+              {c.proposal.urgency}
             </span>
+            {typeof c.proposal.confidence === "number" ? (
+              <span className="font-mono text-[12px] text-muted-foreground/70">
+                {" "}
+                · {c.proposal.confidence.toFixed(2)}
+              </span>
+            ) : null}
+          </div>
+          {/* which model, on which prompt. The first thing an auditor asks,
+              and it was sitting in the payload unused. */}
+          {c.model_name ? (
+            <div className="mt-1.5 font-mono text-[10.5px] text-muted-foreground">
+              {c.model_name}
+              {c.prompt_version ? (
+                <>
+                  <span className="opacity-40"> · </span>prompt{" "}
+                  {c.prompt_version}
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {/* the model's own reasoning, in its own words */}
+          {c.rationale ? (
+            <p
+              className="mt-3 max-w-[62ch] border-l pl-3.5 text-[13px] leading-relaxed text-muted-foreground"
+              style={{ borderColor: "var(--border)" }}
+            >
+              {c.rationale}
+            </p>
           ) : null}
         </div>
       ),
@@ -232,13 +349,21 @@ function DecisionPath({ c, overridden }: { c: Case; overridden: boolean }) {
     label: "Decided",
     hint: "The final classification after guardrails. Held-for-review cases wait for an associate, who can override type and urgency; every override is kept as labelled training signal.",
     body: (
-      <div className="text-[16px] text-muted-foreground">
-        <span className="font-semibold text-foreground">
-          {TYPE_LABELS[c.request_type] ?? c.request_type}
-        </span>{" "}
-        at{" "}
-        <span style={{ color: `var(--u-${c.urgency})` }}>{c.urgency}</span>
-        {c.requires_review ? <span> · held for review</span> : null}
+      <div>
+        <div className="text-[16px] text-muted-foreground">
+          <span className="font-semibold text-foreground">
+            {TYPE_LABELS[c.request_type] ?? c.request_type}
+          </span>{" "}
+          at{" "}
+          <span style={{ color: `var(--u-${c.urgency})` }}>{c.urgency}</span>
+          {c.requires_review ? <span> · held for review</span> : null}
+        </div>
+        {/* why it was held. The engine records this and nothing displayed it. */}
+        {c.review_reason ? (
+          <div className="mt-2 max-w-[62ch] font-mono text-[11.5px] leading-relaxed text-muted-foreground">
+            {c.review_reason}
+          </div>
+        ) : null}
       </div>
     ),
   });
@@ -337,7 +462,7 @@ function ReviewRow({
   return (
     <div className="mt-6">
       {strip}
-      <Eyebrow hint="In production this sits behind the associate's SSO role; the demo leaves it open so you can exercise the loop. An override re-runs the corrected branch through the real engine and keeps the disagreement as labelled training signal.">
+      <Eyebrow hint="In production this sits behind the associate's SSO role; the demo leaves it open so you can exercise the loop. An override re-runs the corrected branch through the real engine and keeps the disagreement as labelled training signal. Corrections stack until someone approves; approval closes the record, so override is unavailable after it.">
         Review
       </Eyebrow>
       <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-4">
@@ -357,18 +482,60 @@ function ReviewRow({
               ? "Confirming…"
               : "Approve"}
         </button>
+        {/* Approval is a commitment, so it closes the override path: a
+            disposition cannot be quietly changed after someone has signed off
+            on it. Corrections still stack freely up until that point. */}
         <button
           type="button"
-          disabled={busy !== null}
+          disabled={busy !== null || approved}
           onClick={() => setOpen((v) => !v)}
-          className={`${pickChip(open)} disabled:opacity-50`}
+          className={`${pickChip(open && !approved)} disabled:cursor-not-allowed disabled:opacity-40`}
         >
           Override
         </button>
+        {approved ? (
+          <span
+            title="Override is only available before approval"
+            aria-label="Override is only available before approval"
+            className="inline-flex items-center"
+            style={{ color: "var(--primary)" }}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <rect x="4" y="10.5" width="16" height="9.5" rx="2.5" />
+              <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+            </svg>
+          </span>
+        ) : null}
       </div>
 
-      {open ? (
-        <div className="mt-3 space-y-2 pl-4">
+      {/* Height animated with grid-template-rows rather than a guessed
+          max-height, and the panel stays mounted so confirming closes it
+          smoothly instead of unmounting mid-gesture. */}
+      <div
+        className="grid transition-all duration-300"
+        style={{
+          gridTemplateRows: open && !approved ? "1fr" : "0fr",
+          opacity: open && !approved ? 1 : 0,
+          transitionTimingFunction: "var(--ease-out)",
+        }}
+        aria-hidden={!open || approved}
+      >
+        <div
+          className={`min-h-0 overflow-hidden ${
+            open && !approved ? "" : "pointer-events-none"
+          }`}
+        >
+          <div className="mt-3 space-y-2 pl-4">
           <div className="flex flex-wrap gap-1.5">
             {REVIEW_TYPES.map((t) => (
               <button
@@ -400,9 +567,10 @@ function ReviewRow({
             >
               {busy === "override" ? "Re-running…" : "Confirm"}
             </button>
+            </div>
           </div>
         </div>
-      ) : null}
+      </div>
 
       {error ? (
         <p className="mt-2 pl-4 font-mono text-[11px]" style={{ color: "var(--destructive)" }}>
@@ -630,10 +798,22 @@ export default function CaseDetail({
                       {typeof c.latency_ms === "number" ? (
                         <span>{c.latency_ms}ms</span>
                       ) : null}
-                      {c.rationale ? (
-                        <InfoHint label="Model rationale" placement="side">
-                          {c.rationale}
-                        </InfoHint>
+                      {/* the clock this desk is actually run against */}
+                      {windowBetween(c.created_at, c.sla_due_at) ? (
+                        <span>
+                          SLA{" "}
+                          <span className="text-foreground">
+                            {windowBetween(c.created_at, c.sla_due_at)}
+                          </span>
+                        </span>
+                      ) : null}
+                      {c.sla_breached ? (
+                        <span
+                          className="uppercase tracking-[0.14em]"
+                          style={{ color: "var(--u-critical)" }}
+                        >
+                          breached
+                        </span>
                       ) : null}
                     </div>
                   </div>
@@ -657,22 +837,37 @@ export default function CaseDetail({
                         {c.channel} ·{" "}
                         <span className="text-foreground/75">{c.sender}</span>
                       </div>
+                      {/* The customer's own words, ruled off so they read as
+                          quoted material rather than as system output. */}
                       {c.body ? (
-                        <p className="mt-3 max-w-[58ch] whitespace-pre-wrap text-[14.5px] leading-[1.75] text-muted-foreground">
+                        <p
+                          className="mt-3.5 max-w-[68ch] whitespace-pre-wrap border-l pl-4 text-[14.5px] leading-[1.75] text-muted-foreground"
+                          style={{ borderColor: "var(--border)" }}
+                        >
                           {c.body}
                         </p>
                       ) : null}
+                      {/* Extraction is one of the things the brief asks for.
+                          A labelled grid says so; a wrapping row of pairs
+                          reads as leftover metadata. */}
                       {Object.keys(c.entities ?? {}).length > 0 &&
                       c.decision_source !== "keyword_fallback" ? (
-                        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11.5px]">
-                          {Object.entries(c.entities).map(([k, v]) => (
-                            <span key={k}>
-                              <span className="text-muted-foreground/70">
-                                {k}
-                              </span>{" "}
-                              <span>{String(v)}</span>
-                            </span>
-                          ))}
+                        <div className="mt-5">
+                          <div className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-muted-foreground/70">
+                            Extracted
+                          </div>
+                          <div className="mt-2 grid grid-cols-[max-content_1fr] gap-x-5 gap-y-1.5 font-mono text-[11.5px]">
+                            {Object.entries(c.entities).map(([k, v]) => (
+                              <Fragment key={k}>
+                                <span className="text-muted-foreground">
+                                  {k}
+                                </span>
+                                <span className="text-foreground">
+                                  {String(v)}
+                                </span>
+                              </Fragment>
+                            ))}
+                          </div>
                         </div>
                       ) : null}
                     </div>
@@ -687,12 +882,14 @@ export default function CaseDetail({
               {i === 2 ? (
                 <div>
                   <Eyebrow>Executed · {c.n_actions} steps</Eyebrow>
-                  <ol className="mt-5 pl-1">
+                  {/* A runbook, so the markers are numbered. Branch steps are
+                      numbered; a human event is not a branch step and gets a
+                      plain marker in the guard colour instead. */}
+                  <ol className="mt-6">
                     {c.trace.map((s, n) => {
+                      const human = (s.summary ?? "").startsWith(HUMAN_STEP);
+
                       if (hiddenCorrections.has(n)) {
-                        // One line stands in for the whole folded run, drawn at
-                        // the position of the earliest one so the timeline keeps
-                        // its order.
                         if (n !== firstHiddenCorrection) return null;
                         return (
                           <li key={n} className="relative pb-5 pl-7">
@@ -706,7 +903,7 @@ export default function CaseDetail({
                               className="absolute left-0 top-[5px] h-[9px] w-[9px] rounded-full border-2"
                               style={{
                                 borderColor: "var(--border)",
-                                background: "var(--card)",
+                                background: "var(--background)",
                               }}
                             />
                             <button
@@ -721,19 +918,60 @@ export default function CaseDetail({
                           </li>
                         );
                       }
-                      const human = (s.summary ?? "").startsWith(HUMAN_STEP);
+
                       const failed = s.outcome === "failed";
-                      const summary = stepSummary(s);
+                      const rawSummary = stepSummary(s, c.status);
+                      // The engine records a human event against log_outcome,
+                      // so a run of corrections would render as four identical
+                      // LOG OUTCOME rows. The row says what it actually is,
+                      // and the summary sheds the prefix the label now carries.
+                      const summary =
+                        human && rawSummary
+                          ? rawSummary.slice(HUMAN_STEP.length).trim()
+                          : rawSummary;
                       const last = n === c.trace.length - 1;
-                      // Colour carries meaning or it is noise: a failure, a
-                      // human event, everything else neutral.
+                      const heldDraft = (s.summary ?? "").endsWith(HELD_SUFFIX);
+                      const due = windowBetween(c.created_at, s.due_at);
+
+                      // Two steps in a branch carry an outcome rather than an
+                      // activity, so those two get a filled dot in the colour
+                      // of the thing they report. The draft mirrors its own
+                      // badge: teal if it went, amber if a person has to
+                      // release it. The log takes the case's ACTUAL terminal
+                      // status rather than the one workflows.yaml declared,
+                      // because a gate may have revoked it. Everything else is
+                      // routine and stays an outline.
+                      const isDraft = s.action === "generate_response";
+                      const isLog = s.action === "log_outcome";
+                      const logTone =
+                        c.status === "auto_resolved"
+                          ? "var(--ok)"
+                          : c.status === "escalated"
+                            ? "var(--guard)"
+                            : "var(--muted-foreground)";
                       const tone = failed
                         ? "var(--u-critical)"
                         : human
                           ? "var(--guard)"
-                          : "var(--border-accent-strong)";
+                          : isDraft
+                            ? heldDraft
+                              ? "var(--guard)"
+                              : "var(--ok)"
+                            : isLog
+                              ? logTone
+                              : "var(--border)";
+                      const filled = failed || human || isDraft || isLog;
+                      const ink = failed
+                        ? "var(--u-critical)"
+                        : human
+                          ? "var(--guard)"
+                          : "var(--foreground)";
+
                       return (
-                        <li key={n} className={`relative pl-7 ${last ? "" : "pb-5"}`}>
+                        <li
+                          key={n}
+                          className={`relative pl-7 ${last ? "" : "pb-5"}`}
+                        >
                           {last ? null : (
                             <span
                               aria-hidden
@@ -744,62 +982,63 @@ export default function CaseDetail({
                           <span
                             aria-hidden
                             className="absolute left-0 top-[5px] h-[9px] w-[9px] rounded-full border-2"
-                            style={{ borderColor: tone, background: "var(--card)" }}
+                            style={{
+                              borderColor: tone,
+                              background: filled ? tone : "var(--background)",
+                            }}
                           />
-                          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+
+                          {/* the header uses the full width: what ran on the
+                              left, where it went on the right */}
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
                             <span
-                              className="font-mono text-[10px] uppercase tracking-[0.16em]"
-                              style={{ color: tone }}
+                              className="font-mono text-[11px] uppercase tracking-[0.14em]"
+                              style={{ color: ink }}
                             >
-                              {ACTION_LABELS[s.action] ?? s.action.replace(/_/g, " ")}
+                              {human
+                                ? "Human review"
+                                : (ACTION_LABELS[s.action] ??
+                                  s.action.replace(/_/g, " "))}
                             </span>
-                            {s.target ? (
-                              <span className="rounded-full bg-secondary px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-                                {s.target}
-                              </span>
-                            ) : null}
-                            {s.outcome && s.outcome !== "succeeded" ? (
-                              <span
-                                className="font-mono text-[10px] uppercase tracking-wider"
-                                style={{
-                                  color: failed
-                                    ? "var(--u-critical)"
-                                    : "var(--muted-foreground)",
-                                }}
-                              >
-                                {s.outcome}
-                              </span>
-                            ) : null}
+                            <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-muted-foreground">
+                              {due ? <span>due +{due}</span> : null}
+                              {s.target ? (
+                                <span className="rounded-full bg-secondary px-2 py-0.5">
+                                  {s.target}
+                                </span>
+                              ) : null}
+                              {s.outcome && s.outcome !== "succeeded" ? (
+                                <span
+                                  className="uppercase tracking-wider"
+                                  style={{
+                                    color: failed
+                                      ? "var(--u-critical)"
+                                      : "var(--muted-foreground)",
+                                  }}
+                                >
+                                  {s.outcome}
+                                </span>
+                              ) : null}
+                            </span>
                           </div>
+
                           {summary ? (
-                            <div className="mt-1.5 max-w-[70ch] text-[13.5px] leading-relaxed text-muted-foreground">
+                            <p className="mt-1.5 max-w-[72ch] text-[13.5px] leading-relaxed text-muted-foreground">
                               {summary}
-                            </div>
+                            </p>
                           ) : null}
+
                           {s.artifact ? (
-                            s.action === "generate_response" ? (
-                              // Outbound copy. It gets the card, because this is
-                              // the thing a customer would actually receive.
-                              <pre
-                                className="mt-2.5 max-w-[72ch] whitespace-pre-wrap rounded-xl px-4 py-3.5 font-sans text-[13px] leading-[1.6] text-muted-foreground"
-                                style={{
-                                  background: "var(--secondary)",
-                                  border: "1px solid var(--border-accent)",
-                                }}
-                              >
-                                {s.artifact}
-                              </pre>
+                            isDraft ? (
+                              <DraftedReply
+                                text={s.artifact}
+                                held={heldDraft}
+                              />
                             ) : (
-                              // An audit record, not a message. Quieter, mono,
-                              // no border - it is evidence, not correspondence.
-                              <div
-                                className="mt-2 max-w-[78ch] whitespace-pre-wrap rounded-lg px-3 py-2 font-mono text-[11.5px] leading-relaxed text-muted-foreground"
-                                style={{ background: "var(--secondary)" }}
-                              >
-                                {s.artifact}
-                              </div>
+                              <AuditRecord text={s.artifact} />
                             )
                           ) : null}
+
                           {s.error ? (
                             <div
                               className="mt-1.5 font-mono text-[11px]"
@@ -812,10 +1051,15 @@ export default function CaseDetail({
                       );
                     })}
                   </ol>
-                  {/* the record's own identifiers, aligned to the timeline
-                      column rather than hanging left of it */}
-                  <div className="mt-8 pl-8 font-mono text-[10px] text-foreground/70">
-                    {c.case_id} · {c.trace_id}
+
+                  {/* the record's own identifiers, closing the chapter */}
+                  <div className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-4 font-mono text-[10px] text-muted-foreground">
+                    <span className="text-foreground/70">{c.case_id}</span>
+                    <span className="opacity-40">·</span>
+                    <span className="text-foreground/70">{c.trace_id}</span>
+                    {c.branch ? (
+                      <span className="ml-auto">branch {c.branch}</span>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

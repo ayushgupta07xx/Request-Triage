@@ -94,12 +94,16 @@ export default function Landing() {
             >
               Open the desk
             </Link>
+            {/* Live over Performance: the thing worth a visitor's second click
+                is watching the pipeline run on a message they chose, not a
+                table of numbers they have not been given a reason to trust
+                yet. */}
             <Link
-              href="/performance"
+              href="/live"
               className="lift rounded-full px-5 py-2.5 text-[14px] font-medium text-foreground"
               style={{ border: "1px solid var(--border-accent-strong)" }}
             >
-              Performance
+              Run it live
             </Link>
           </div>
 
