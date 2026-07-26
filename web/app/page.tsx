@@ -7,6 +7,38 @@ import type { DemoData } from "@/lib/types";
 import CaseCarousel, { HandoffBar } from "@/components/case-carousel";
 import Wordmark from "@/components/wordmark";
 
+// The four urgency levels the desk actually routes on. The chip walks them
+// slowly: the claim is that bounded autonomy handles the whole severity ramp,
+// so the ramp itself is what carries the colour here. The brand accent stays
+// out of it — this is a severity signal, not a brand flourish.
+const SEVERITY = ["low", "medium", "high", "critical"] as const;
+const SEVERITY_MS = 3750;
+
+function SeverityDot() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(
+      () => setI((n) => (n + 1) % SEVERITY.length),
+      SEVERITY_MS,
+    );
+    return () => window.clearInterval(id);
+  }, []);
+  const u = `var(--u-${SEVERITY[i]})`;
+  return (
+    <span
+      aria-hidden
+      className="h-[7px] w-[7px] shrink-0 rounded-full"
+      style={{
+        background: u,
+        boxShadow: `0 0 0 3px color-mix(in srgb, ${u} 20%, transparent)`,
+        transition:
+          "background-color 1200ms var(--ease), box-shadow 1200ms var(--ease)",
+      }}
+    />
+  );
+}
+
 export default function Landing() {
   const [dev, setDev] = useState<DemoData | null>(null);
 
@@ -35,17 +67,11 @@ export default function Landing() {
               live dot in front of it, the line carries the weight the claim
               deserves. */}
           <div
-            className="rise inline-flex items-center gap-2 rounded-full px-3 py-1.5"
-            style={{ background: "var(--accent)" }}
+            className="rise inline-flex items-center gap-2.5 rounded-full px-3.5 py-1.5"
+            style={{ background: "var(--secondary)" }}
           >
-            <span
-              className="h-1.5 w-1.5 shrink-0 rounded-full"
-              style={{ background: "var(--ok)" }}
-            />
-            <span
-              className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.16em]"
-              style={{ color: "var(--accent-foreground)" }}
-            >
+            <SeverityDot />
+            <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.16em] text-foreground">
               Bounded-autonomy request processing
             </span>
           </div>
@@ -84,7 +110,18 @@ export default function Landing() {
               ["+41 pts", "vs keyword baseline"],
             ].map(([v, l]) => (
               <div key={l}>
-                <div className="text-[22px] font-bold tracking-tight">{v}</div>
+                {/* tracking-tight crushes "+4" into a single glyph; the sign
+                    gets its own space back without loosening the digits */}
+                <div className="text-[22px] font-bold tracking-tight">
+                  {v.startsWith("+") ? (
+                    <>
+                      <span className="mr-[3px]">+</span>
+                      {v.slice(1)}
+                    </>
+                  ) : (
+                    v
+                  )}
+                </div>
                 <div className="mt-0.5 font-mono text-[10px] tracking-[0.05em] text-muted-foreground">
                   {l}
                 </div>

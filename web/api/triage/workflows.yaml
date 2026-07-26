@@ -215,7 +215,7 @@ branches:
         summary: "Draft answer grounded in the knowledge base, with source cited"
       - action: log_outcome
         status: auto_resolved
-        summary: "Outcome logged; answered from the knowledge base and closed without a person"
+        summary: "Outcome logged with the grounded answer and its cited source"
       - action: set_follow_up
         offset: from_sla
         conditional_on_urgency: [high, critical]

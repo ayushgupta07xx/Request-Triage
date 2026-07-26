@@ -321,7 +321,7 @@ function Pipeline() {
 // keyword_fallback as neutral -- "not the model's judgement" -- and the floor
 // is capped at 0.60 and never auto-resolves, so accenting it here would
 // contradict a decision the product has already made.
-const ACTIVE_SIZE = [22, 18, 15, 12];
+const ACTIVE_SIZE = [18, 15.5, 13.5, 11.5];
 
 function Waterfall({ chain, skip }: { chain: string[]; skip: number }) {
   if (!chain.length) return null;
@@ -336,7 +336,7 @@ function Waterfall({ chain, skip }: { chain: string[]; skip: number }) {
       : "llm_secondary";
 
   return (
-    <div className="relative mt-2.5 h-[100px] overflow-hidden rounded-lg px-3 py-2 ring-1 ring-border">
+    <div className="relative mt-2.5 h-[84px] overflow-hidden rounded-lg px-3 py-2 ring-1 ring-border">
       {/* what has already failed, side by side, each cut as it arrives */}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
         {dead.map((d) => (
@@ -535,28 +535,27 @@ export default function LiveConsole() {
     <div className="grid h-[calc(100dvh-64px)] grid-cols-1 lg:grid-cols-[minmax(0,27rem)_minmax(0,1fr)]">
       {/* ---------------------------------------------------- compose pane */}
       <section className="no-bar overflow-y-auto border-b px-6 py-4 lg:border-b-0 lg:border-r">
-        <Eyebrow
-          hint={
-            <>
-              Runs the real pipeline on your message — same code as the committed
-              batches.
-              <Defs
-                rows={[
-                  [
-                    "Stored?",
-                    "Yes, in a libSQL database — so repeat sends are caught as duplicates before any model call.",
-                  ],
-                  ["Auto-resolve?", "Rare here by design — enquiries have no auto-gate on this tier."],
-                ]}
-              />
-            </>
-          }
-        >
-          Live mode
-        </Eyebrow>
-        <h1 className="mt-1.5 text-[21px] font-bold tracking-tight">
-          Run a real request
-        </h1>
+        {/* No page name: the nav already says Live, and the desk and
+            performance pages do not repeat their own names either. The hint
+            the eyebrow carried rides the heading instead. */}
+        <div className="flex items-center gap-2">
+          <h1 className="text-[21px] font-bold tracking-tight">
+            Run a real request
+          </h1>
+          <InfoHint placement="bottom" label="What live mode does">
+            Runs the real pipeline on your message — same code as the committed
+            batches.
+            <Defs
+              rows={[
+                [
+                  "Stored?",
+                  "Yes, in a libSQL database — so repeat sends are caught as duplicates before any model call.",
+                ],
+                ["Auto-resolve?", "Rare here by design — enquiries have no auto-gate on this tier."],
+              ]}
+            />
+          </InfoHint>
+        </div>
         {/* status, not prose: the dot answers "is it up" before a word is read */}
         <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1">
           <span
@@ -598,7 +597,7 @@ export default function LiveConsole() {
 
         {/* Each control group leads with its own label on the same row, so a
             group costs one line of height instead of two. */}
-        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <Eyebrow>Examples</Eyebrow>
           {PRESETS.map((p) => (
             <button
@@ -610,9 +609,37 @@ export default function LiveConsole() {
               {p.label}
             </button>
           ))}
+          {/* Wipe the form in one action. A reviewer who wants to type their
+              own message should not have to select an example out by hand. */}
+          <button
+            type="button"
+            onClick={() => {
+              setSubject("");
+              setBody("");
+              setError(null);
+            }}
+            disabled={!subject && !body}
+            title="Clear the subject and message"
+            aria-label="Clear the subject and message"
+            className="lift flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground ring-1 ring-border transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5" />
+            </svg>
+          </button>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <Eyebrow
             hint={
               <>
@@ -642,7 +669,7 @@ export default function LiveConsole() {
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Subject (optional)"
-          className="mt-3 w-full rounded-lg bg-transparent px-3 py-2 text-[13px] ring-1 ring-border placeholder:text-muted-foreground focus:outline-none focus:ring-2"
+          className="mt-4 w-full rounded-lg bg-transparent px-3 py-2 text-[13px] ring-1 ring-border placeholder:text-muted-foreground focus:outline-none focus:ring-2"
         />
         <textarea
           value={body}
@@ -658,7 +685,7 @@ export default function LiveConsole() {
           </div>
         ) : null}
 
-        <div className="mt-3">
+        <div className="mt-4">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <Eyebrow
               hint={
@@ -692,7 +719,7 @@ export default function LiveConsole() {
         <button
           onClick={run}
           disabled={disabled}
-          className={`lift mt-4 w-full rounded-full px-4 py-2.5 text-[14px] font-semibold ${
+          className={`lift mt-5 w-full rounded-full px-4 py-2.5 text-[14px] font-semibold ${
             disabled
               ? "cursor-not-allowed text-muted-foreground ring-1 ring-border"
               : "bg-primary text-primary-foreground"

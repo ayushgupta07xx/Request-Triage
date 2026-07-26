@@ -71,7 +71,7 @@ export function HandoffBar({ automated }: { automated: number }) {
       <div className="flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
         <span className="text-foreground">Every request</span>
         <span>· classified, branched, executed</span>
-        <InfoHint placement="top" label="What the split means">
+        <InfoHint placement="bottom" label="What the split means">
           Every request is received, classified, entity-extracted, branched,
           drafted, routed and logged with no person involved. The split below is
           only what closed itself — the rest reach an associate already prepared.

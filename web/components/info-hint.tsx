@@ -14,6 +14,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 //  * Measured against its nearest CLIPPING ANCESTOR, not the viewport — inside
 //    the desk, a chapter's own scroll container is what cuts a panel off long
 //    before the window edge does.
+//  * Clamped on BOTH axes. Flipping bottom -> bottom-right only moves which
+//    edge overflows when the pane is narrower than the panel; the panel has to
+//    be nudged back inside as well as flipped.
 //  * "side" opens into the empty column beside the text, wider, and is clamped
 //    vertically so it can never run off the top or bottom of the chapter.
 
@@ -68,6 +71,7 @@ export default function InfoHint({
   const [open, setOpen] = useState(false);
   const [resolved, setResolved] = useState<Placement>(placement);
   const [shift, setShift] = useState(0);
+  const [shiftX, setShiftX] = useState(0);
   const [ready, setReady] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const panelRef = useRef<HTMLSpanElement>(null);
@@ -96,6 +100,7 @@ export default function InfoHint({
       setReady(false);
       setResolved(placement);
       setShift(0);
+      setShiftX(0);
       return;
     }
     const trigger = ref.current;
@@ -157,8 +162,30 @@ export default function InfoHint({
       }
     }
 
+    // Horizontal clamp for everything that is not a side placement. Flipping
+    // to the -right variant only changes which edge overflows once the pane is
+    // narrower than the panel, so the panel is pushed back inside the clip box
+    // rather than left to crop.
+    let dx = 0;
+    if (next !== "side" && next !== "side-left") {
+      const intendedLeft =
+        next === "bottom-right" || next === "top-right"
+          ? t.right - p.width
+          : next === "left"
+            ? t.left - p.width - 8
+            : next === "right"
+              ? t.right + 8
+              : t.left;
+      if (intendedLeft < clip.left + MARGIN) {
+        dx = clip.left + MARGIN - intendedLeft;
+      } else if (intendedLeft + p.width > clip.right - MARGIN) {
+        dx = clip.right - MARGIN - (intendedLeft + p.width);
+      }
+    }
+
     setResolved(next);
     setShift(dy);
+    setShiftX(dx);
     setReady(true);
   }, [open, placement]);
 
@@ -200,15 +227,17 @@ export default function InfoHint({
         ?
       </button>
       {open && (
-        // outer span owns placement + the clamp offset; inner owns the entrance,
-        // so the two transforms never fight each other
+        // outer span owns placement + the clamp offsets; inner owns the
+        // entrance, so the two transforms never fight each other
         <span
           ref={panelRef}
           className={`absolute z-30 block ${isSide ? "w-[19rem]" : "w-64"} ${pos}`}
           style={
             isSide
               ? { transform: `translateY(calc(-50% + ${shift}px))` }
-              : undefined
+              : shiftX
+                ? { transform: `translateX(${shiftX}px)` }
+                : undefined
           }
         >
           <span

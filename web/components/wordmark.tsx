@@ -1,9 +1,14 @@
 "use client";
 
 // The product mark, drawn from the same vocabulary as the rest of the app: a
-// filled dot, a connector, a hollow ring. Machine, then handover, then person.
-// It is the thesis at 20 pixels, and it means the wordmark reads as a product
-// rather than as a page heading.
+// hollow ring, a connector, a filled dot. A person is handed to, and the
+// accent lands on the arrival — the same rhythm as the wordmark itself, where
+// "Hand" is neutral and "off" carries the colour.
+//
+// The two ends are deliberately NOT the same r. SVG centres a stroke on its
+// path, so a ring at r=2.5 with a 1.2 stroke reaches an outer radius of 3.1,
+// while a filled disc renders at exactly its r. The dot is set at 2.9 rather
+// than 3.1 because a solid shape reads optically heavier than an outline.
 export default function Wordmark({
   size = "nav",
 }: {
@@ -23,22 +28,22 @@ export default function Wordmark({
         aria-hidden
         className="shrink-0 text-muted-foreground"
       >
-        <circle cx="4.2" cy="10" r="2.6" fill="var(--primary)" />
-        <path
-          d="M7.9 10 H12.2"
+        <circle
+          cx="5"
+          cy="10"
+          r="2.5"
           stroke="currentColor"
-          strokeWidth="1.3"
+          strokeWidth="1.2"
+          opacity="0.75"
+        />
+        <path
+          d="M8.7 10 H11.4"
+          stroke="currentColor"
+          strokeWidth="1.2"
           strokeLinecap="round"
           opacity="0.75"
         />
-        <circle
-          cx="15.4"
-          cy="10"
-          r="2.6"
-          stroke="currentColor"
-          strokeWidth="1.3"
-          opacity="0.75"
-        />
+        <circle cx="15.05" cy="10" r="2.9" fill="var(--primary)" />
       </svg>
       <span
         className="select-none font-bold leading-none"
