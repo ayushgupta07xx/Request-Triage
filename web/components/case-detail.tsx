@@ -68,9 +68,21 @@ const ACTION_LABELS: Record<string, string> = {
 // The engine falls back to the action name when a step declares no summary, so
 // a trace row would otherwise print its own title twice. Older baked runs still
 // carry those rows, which is why this is handled here and not only in config.
+//
+// triage/engine.py also appends HELD_SUFFIX to every drafted step that is not
+// auto-sent. On a branch whose configured summary already says as much, the row
+// states it twice; on a branch that does not, the suffix is the only thing
+// telling a reviewer the draft was never sent. So it is stripped only when the
+// sentence before it is already carrying the meaning.
+const HELD_SUFFIX = " (held for human approval)";
+
 function stepSummary(s: TraceStep): string | null {
   const text = (s.summary ?? "").trim();
   if (!text || text === s.action) return null;
+  if (text.endsWith(HELD_SUFFIX)) {
+    const head = text.slice(0, -HELD_SUFFIX.length).trim();
+    if (/human approval/i.test(head)) return head || null;
+  }
   return text;
 }
 
@@ -105,6 +117,148 @@ const pickChip = (active: boolean) =>
       ? "bg-primary text-primary-foreground"
       : "bg-secondary text-muted-foreground hover:text-foreground"
   }`;
+
+// One stage on the decision path. Deliberately the same rail, dot, indent and
+// tone rules as a step in the execution timeline: the two chapters describe
+// one pipeline, so they should read as one drawing. The rail is the argument —
+// proposal, then guardrails, then decision, in that order, always.
+function PathStep({
+  label,
+  color,
+  hint,
+  last,
+  children,
+}: {
+  label: string;
+  color?: string;
+  hint?: React.ReactNode;
+  last: boolean;
+  children: React.ReactNode;
+}) {
+  const tone = color ?? "var(--border-accent-strong)";
+  return (
+    <li className={`relative pl-7 ${last ? "" : "pb-9"}`}>
+      {last ? null : (
+        <span
+          aria-hidden
+          className="absolute left-[4px] top-3.5 h-full w-px"
+          style={{ background: "var(--border)" }}
+        />
+      )}
+      <span
+        aria-hidden
+        className="absolute left-0 top-[5px] h-[9px] w-[9px] rounded-full border-2"
+        style={{ borderColor: tone, background: "var(--card)" }}
+      />
+      <div className="flex items-center gap-2">
+        <span
+          className="font-mono text-[11px] uppercase tracking-[0.16em]"
+          style={{ color: color ?? "var(--muted-foreground)" }}
+        >
+          {label}
+        </span>
+        {hint ? <InfoHint placement="side">{hint}</InfoHint> : null}
+      </div>
+      <div className="mt-2.5">{children}</div>
+    </li>
+  );
+}
+
+// Built as a list so the connecting rail knows which stage is last: a case
+// with no guardrail catch has two stages, not three, and the rail has to end
+// on the real one.
+function DecisionPath({ c, overridden }: { c: Case; overridden: boolean }) {
+  const steps: {
+    key: string;
+    label: string;
+    color?: string;
+    hint: string;
+    body: React.ReactNode;
+  }[] = [];
+
+  if (c.proposal) {
+    steps.push({
+      key: "proposed",
+      label: "Model proposed",
+      hint: "The LLM's classification is an untrusted proposal. Deterministic guardrails see it before it becomes a decision, and the audit trail keeps both.",
+      body: (
+        <div className="text-[16px] text-muted-foreground">
+          <span className="font-semibold text-foreground">
+            {TYPE_LABELS[
+              c.proposal.request_type as keyof typeof TYPE_LABELS
+            ] ?? c.proposal.request_type}
+          </span>{" "}
+          at{" "}
+          <span style={{ color: `var(--u-${c.proposal.urgency})` }}>
+            {c.proposal.urgency}
+          </span>
+          {typeof c.proposal.confidence === "number" ? (
+            <span className="font-mono text-[12px] text-muted-foreground/70">
+              {" "}
+              · {c.proposal.confidence.toFixed(2)}
+            </span>
+          ) : null}
+        </div>
+      ),
+    });
+  }
+
+  if (c.guardrail_triggers.length > 0) {
+    steps.push({
+      key: "guardrails",
+      label: "Guardrails",
+      color: "var(--guard)",
+      hint: "Deterministic phrase filters run on the raw text before the model's proposal is trusted. They can only escalate — force a more serious type, raise urgency, or demand review — never de-escalate.",
+      body: (
+        <div className="flex flex-wrap items-center gap-2">
+          {c.guardrail_triggers.map((g) => (
+            <GuardChip key={g} id={g} />
+          ))}
+          {overridden && c.proposal ? (
+            <span className="font-mono text-[12px] text-muted-foreground">
+              {c.proposal.request_type}/{c.proposal.urgency} →{" "}
+              <span className="text-foreground">
+                {c.request_type}/{c.urgency}
+              </span>
+            </span>
+          ) : null}
+        </div>
+      ),
+    });
+  }
+
+  steps.push({
+    key: "decided",
+    label: "Decided",
+    hint: "The final classification after guardrails. Held-for-review cases wait for an associate, who can override type and urgency; every override is kept as labelled training signal.",
+    body: (
+      <div className="text-[16px] text-muted-foreground">
+        <span className="font-semibold text-foreground">
+          {TYPE_LABELS[c.request_type] ?? c.request_type}
+        </span>{" "}
+        at{" "}
+        <span style={{ color: `var(--u-${c.urgency})` }}>{c.urgency}</span>
+        {c.requires_review ? <span> · held for review</span> : null}
+      </div>
+    ),
+  });
+
+  return (
+    <ol className="pl-1">
+      {steps.map((s, n) => (
+        <PathStep
+          key={s.key}
+          label={s.label}
+          color={s.color}
+          hint={s.hint}
+          last={n === steps.length - 1}
+        >
+          {s.body}
+        </PathStep>
+      ))}
+    </ol>
+  );
+}
 
 function ReviewRow({
   c,
@@ -499,8 +653,9 @@ export default function CaseDetail({
                       <div className="text-[15px] font-semibold">
                         {c.subject || "(no subject)"}
                       </div>
-                      <div className="mt-1 font-mono text-[11px] text-muted-foreground/80">
-                        {c.channel} · {c.sender}
+                      <div className="mt-1 font-mono text-[11px] text-muted-foreground/70">
+                        {c.channel} ·{" "}
+                        <span className="text-foreground/75">{c.sender}</span>
                       </div>
                       {c.body ? (
                         <p className="mt-3 max-w-[58ch] whitespace-pre-wrap text-[14.5px] leading-[1.75] text-muted-foreground">
@@ -526,76 +681,7 @@ export default function CaseDetail({
               ) : null}
 
               {/* ============ chapter 2 · the decision path ============= */}
-              {i === 1 ? (
-                <div className="space-y-9">
-                  {c.proposal ? (
-                    <div>
-                      <Eyebrow hint="The LLM's classification is an untrusted proposal. Deterministic guardrails see it before it becomes a decision, and the audit trail keeps both.">
-                        Model proposed
-                      </Eyebrow>
-                      <div className="mt-2.5 pl-4 text-[16px] text-muted-foreground">
-                        <span className="font-semibold text-foreground">
-                          {TYPE_LABELS[
-                            c.proposal.request_type as keyof typeof TYPE_LABELS
-                          ] ?? c.proposal.request_type}
-                        </span>{" "}
-                        at{" "}
-                        <span
-                          style={{ color: `var(--u-${c.proposal.urgency})` }}
-                        >
-                          {c.proposal.urgency}
-                        </span>
-                        {typeof c.proposal.confidence === "number" ? (
-                          <span className="font-mono text-[12px] text-muted-foreground/70">
-                            {" "}
-                            · {c.proposal.confidence.toFixed(2)}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {c.guardrail_triggers.length > 0 ? (
-                    <div>
-                      <Eyebrow
-                        color="var(--guard)"
-                        hint="Deterministic phrase filters run on the raw text before the model's proposal is trusted. They can only escalate — force a more serious type, raise urgency, or demand review — never de-escalate."
-                      >
-                        Guardrails
-                      </Eyebrow>
-                      <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-4">
-                        {c.guardrail_triggers.map((g) => (
-                          <GuardChip key={g} id={g} />
-                        ))}
-                        {overridden && c.proposal ? (
-                          <span className="font-mono text-[12px] text-muted-foreground">
-                            {c.proposal.request_type}/{c.proposal.urgency} →{" "}
-                            <span className="text-foreground">
-                              {c.request_type}/{c.urgency}
-                            </span>
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div>
-                    <Eyebrow hint="The final classification after guardrails. Held-for-review cases wait for an associate, who can override type and urgency; every override is kept as labelled training signal.">
-                      Decided
-                    </Eyebrow>
-                    <div className="mt-2.5 pl-4 text-[16px] text-muted-foreground">
-                      <span className="font-semibold text-foreground">
-                        {TYPE_LABELS[c.request_type] ?? c.request_type}
-                      </span>{" "}
-                      at{" "}
-                      <span style={{ color: `var(--u-${c.urgency})` }}>
-                        {c.urgency}
-                      </span>
-                      {c.requires_review ? <span> · held for review</span> : null}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              {i === 1 ? <DecisionPath c={c} overridden={overridden} /> : null}
 
               {/* ============ chapter 3 · what was executed ============= */}
               {i === 2 ? (
@@ -726,7 +812,9 @@ export default function CaseDetail({
                       );
                     })}
                   </ol>
-                  <div className="mt-6 pl-4 font-mono text-[10px] text-muted-foreground/60">
+                  {/* the record's own identifiers, aligned to the timeline
+                      column rather than hanging left of it */}
+                  <div className="mt-8 pl-7 font-mono text-[10px] text-foreground/70">
                     {c.case_id} · {c.trace_id}
                   </div>
                 </div>
@@ -736,8 +824,17 @@ export default function CaseDetail({
         </div>
       </div>
 
-      {/* ---- chapter cue ------------------------------------------------ */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
+      {/* ---- chapter cue ------------------------------------------------
+          The scrim matters: bottom padding only clears the cue when a chapter
+          is scrolled to its end, so mid-scroll a draft card used to run
+          straight under the text. The fade masks it at every position. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-2 pt-10"
+        style={{
+          background:
+            "linear-gradient(to top, var(--background) 45%, transparent)",
+        }}
+      >
         <span className="font-mono text-[10px] tracking-[0.12em] text-muted-foreground/50">
           {i < total - 1 ? `scroll ↓  ${chapters[i + 1]}` : `${total} / ${total}`}
         </span>
