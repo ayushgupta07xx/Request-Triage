@@ -1,0 +1,243 @@
+1
+00:00:00,000 --> 00:00:02,360
+A lending support team gets a constant
+
+2
+00:00:02,370 --> 00:00:03,960
+stream of customer requests,
+
+3
+00:00:04,500 --> 00:00:07,340
+and right now a person reads every single one.
+
+4
+00:00:07,520 --> 00:00:09,800
+That's slow, it's inconsistent,
+
+5
+00:00:10,360 --> 00:00:13,300
+and it depends on the judgment of whoever opens it.
+
+6
+00:00:14,400 --> 00:00:18,060
+Handoff reads each request, works out what it is,
+
+7
+00:00:18,260 --> 00:00:19,880
+and runs the whole workflow.
+
+8
+00:00:20,760 --> 00:00:24,280
+Anything it isn't sure about, it hands to a person.
+
+9
+00:00:24,980 --> 00:00:28,660
+This is the desk, running on two hundred committed cases.
+
+10
+00:00:29,260 --> 00:00:31,140
+A billing dispute drafts a reply,
+
+11
+00:00:31,700 --> 00:00:35,340
+suppresses collections, sends it to the disputes team,
+
+12
+00:00:35,740 --> 00:00:38,260
+and sets a follow-up against the SLA.
+
+13
+00:00:39,140 --> 00:00:42,840
+A general enquiry is the only type the system can
+
+14
+00:00:42,850 --> 00:00:45,640
+close on its own — and only when the answer is
+
+15
+00:00:45,650 --> 00:00:48,740
+grounded in a knowledge base entry it can cite.
+
+16
+00:00:49,360 --> 00:00:53,360
+A hardship case stops all automation as its first step,
+
+17
+00:00:53,640 --> 00:00:55,620
+escalates, and never auto-resolves.
+
+18
+00:00:56,880 --> 00:00:58,820
+Live mode runs the same pipeline
+
+19
+00:00:58,830 --> 00:01:00,360
+on a message you paste in.
+
+20
+00:01:00,980 --> 00:01:03,520
+This one is asking for a payoff statement.
+
+21
+00:01:05,400 --> 00:01:07,080
+But read further down —
+
+22
+00:01:07,680 --> 00:01:10,460
+the customer says they can't afford the payment,
+
+23
+00:01:10,960 --> 00:01:12,700
+and threatens to go to the regulator.
+
+24
+00:01:13,320 --> 00:01:15,700
+The model looks at the surface request,
+
+25
+00:01:15,710 --> 00:01:17,880
+and calls it a service request.
+
+26
+00:01:18,620 --> 00:01:21,080
+But two deterministic guardrails read
+
+27
+00:01:21,090 --> 00:01:24,240
+what's underneath, and force it onto the
+
+28
+00:01:24,250 --> 00:01:26,580
+hardship branch, at critical urgency.
+
+29
+00:01:27,480 --> 00:01:30,200
+Guardrails can only escalate, never downgrade.
+
+30
+00:01:31,100 --> 00:01:33,860
+A false alarm costs an agent two minutes.
+
+31
+00:01:35,080 --> 00:01:37,740
+A missed hardship case is a compliance failure.
+
+32
+00:01:38,420 --> 00:01:41,640
+Then the branch actually runs — automation paused,
+
+33
+00:01:42,120 --> 00:01:44,740
+case escalated, supervisor alerted,
+
+34
+00:01:45,360 --> 00:01:48,160
+and a reply drafted but held for a human to approve.
+
+35
+00:01:50,140 --> 00:01:52,220
+Send the exact same message again,
+
+36
+00:01:52,600 --> 00:01:55,300
+and it's caught as a duplicate by content fingerprint —
+
+37
+00:01:55,310 --> 00:01:57,700
+before the model is even called.
+
+38
+00:01:58,260 --> 00:02:00,160
+No double routing, and nothing spent.
+
+39
+00:02:00,900 --> 00:02:02,300
+Now change the message,
+
+40
+00:02:02,580 --> 00:02:04,600
+and switch every model provider off.
+
+41
+00:02:04,610 --> 00:02:07,700
+The waterfall degrades through each tier,
+
+42
+00:02:07,920 --> 00:02:10,920
+then falls back to the deterministic keyword floor.
+
+43
+00:02:11,540 --> 00:02:14,120
+Its confidence is capped at zero point six,
+
+44
+00:02:14,240 --> 00:02:17,240
+so it can never close a case on its own.
+
+45
+00:02:18,220 --> 00:02:21,140
+When the system degrades it keeps working,
+
+46
+00:02:21,150 --> 00:02:23,260
+but it never gets more independent.
+
+47
+00:02:24,260 --> 00:02:26,640
+Any live case can be corrected,
+
+48
+00:02:27,000 --> 00:02:30,020
+and the corrected branch runs again for real.
+
+49
+00:02:30,560 --> 00:02:32,520
+The case keeps all three layers —
+
+50
+00:02:32,530 --> 00:02:35,180
+what the model said, what the system decided,
+
+51
+00:02:35,460 --> 00:02:37,300
+and what the human changed it to —
+
+52
+00:02:37,540 --> 00:02:39,620
+stored as a labelled training pair.
+
+53
+00:02:40,800 --> 00:02:44,120
+Corrections stack up without overwriting each other.
+
+54
+00:02:45,400 --> 00:02:48,680
+And approving is a record that a person actually looked.
+
+55
+00:02:49,620 --> 00:02:53,540
+That's three request types and three distinct branches,
+
+56
+00:02:54,080 --> 00:02:55,900
+each executed end to end.
+
+57
+00:02:55,910 --> 00:02:58,980
+Eighty-eight percent accuracy on a hundred
+
+58
+00:02:59,000 --> 00:03:02,200
+held-out cases, run once and scored once.
+
+59
+00:03:02,940 --> 00:03:05,880
+The keyword floor on the same set gets forty-seven.
+
+60
+00:03:07,340 --> 00:03:08,320
+Every branch finished.
+
+61
+00:03:09,760 --> 00:03:13,180
+The model decides. The state machine executes.

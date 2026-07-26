@@ -15,3 +15,8 @@ data/runs/*
 .ruff_cache/
 patch_*.py
 patch/
+demo/raw/
+demo/vo/
+demo/work/
+demo/
+docs/videos/*.mp4
