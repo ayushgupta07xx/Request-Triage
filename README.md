@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="web/app/apple-icon.png" width="72" alt="">
+
 # Handoff
 
 ### Bounded-autonomy request triage for a UK consumer lending desk. Every request classified, branched and executed automatically — and anything uncertain handed to a person, on purpose.
@@ -20,15 +22,23 @@
 ![Baseline](https://img.shields.io/badge/vs_keyword_baseline-%2B41_pts-2EA043)
 ![Branch completion](https://img.shields.io/badge/branch_completion-100%25-2EA043)
 ![Tests](https://img.shields.io/badge/tests-27_passing_offline-2EA043)
-![Streamlit](https://img.shields.io/badge/Streamlit-not_used-6C757D)
 
-**[🌐 Live app](https://handoff-triage.vercel.app)** · **[▶ 3-min demo](https://drive.google.com/file/d/1VyTk0n66fB1LlFOP8a9ld2dlqyUwe834/view?usp=sharing)** · **[📊 Deck](docs/Ayush_Gupta_Incoming_Request_Processing_Workflow.pdf)** · **[📈 Eval reports](docs/eval/)** · **[🧭 Decisions](docs/DECISIONS.md)**
+**[🌐 Live app](https://handoff-triage.vercel.app)** · **[▶ 3-min demo](https://drive.google.com/file/d/1VyTk0n66fB1LlFOP8a9ld2dlqyUwe834/view?usp=sharing)** · **[📊 Design summary](docs/Ayush_Gupta_Incoming_Request_Processing_Workflow.pdf)** · **[📈 Eval reports](docs/eval/)** · **[🧭 Decisions](docs/DECISIONS.md)**
 
 </div>
 
+> **On the two names.** The repository is `Request-Triage` — what the system does.
+> **Handoff** is what the product is called, after the thing it is actually built
+> around: the moment it stops, and gives a case to a person.
+
+<div align="center">
+<img src="docs/img/landing.png" width="880" alt="Handoff landing page — the model decides, the state machine executes">
+</div>
+
+
 ---
 
-A lending operations desk takes a continuous stream of requests by email, web form and shared inbox. Today a person reads every one of them and decides what happens next — which is *slow*, *inconsistent*, and *dependent on individual judgment*. Those are the brief's own three words, and they are the design targets.
+A lending operations desk takes a continuous stream of requests by email, web form and shared inbox. Today a person reads every one of them and decides what happens next — which is *slow*, *inconsistent*, and *dependent on individual judgment*. Those three words are the design targets.
 
 Handoff reads each request, classifies it by **type** and **urgency** as independent axes, runs a deterministic branch of remediation steps, and hands anything it cannot safely finish to a person. **The model decides. The state machine executes.**
 
@@ -39,7 +49,7 @@ Every number below is measured on a held-out split that was executed once and sc
 | | What | Where |
 |---|---|---|
 | 🌐 **Live app** | Opens cold in demo mode from committed batch data — no keys, no network | **[handoff-triage.vercel.app](https://handoff-triage.vercel.app)** |
-| ▶ **Demo** | 3-minute narrated walkthrough: classification, guardrail escalation, duplicate suppression, provider outage, human override | **[Watch](https://drive.google.com/file/d/1VyTk0n66fB1LlFOP8a9ld2dlqyUwe834/view?usp=sharing)** |
+| ▶ **Demo** | 3-minute narrated walkthrough: classification, guardrail escalation, duplicate suppression, provider outage, human override | **[Watch](DEMO_VIDEO_URL_HERE)** |
 | 🖥️ **Live mode** | Paste your own message, run it through the real pipeline, simulate a provider outage, override the result | [/live](https://handoff-triage.vercel.app/live) |
 | 📈 **Reproduce the numbers** | Recompute every published figure from committed runs, zero API calls | [below](#setup) |
 
@@ -89,25 +99,10 @@ corpus is in `data/corpus/`.
 
 ## How a request is processed
 
-```mermaid
-flowchart LR
-    IN([web form · batch upload · shared inbox]) --> DUP{duplicate?}
-    DUP -->|fingerprint hit| SUP[suppressed<br/>no model call]
-    DUP -->|new| CLS[classify · LLM<br/>type × urgency · entities · rationale]
-    CLS --> GR[guardrails<br/>escalate only]
-    GR --> GATE{four gates}
-    GATE --> BR[branch executes<br/>deterministic steps]
-    BR --> ST[(audit store<br/>proposal + decision + trace)]
-    ST --> REV[review queue<br/>human override]
-    REV -->|re-runs corrected branch| BR
-
-    classDef io fill:#1f9e84,stroke:#0f7a66,color:#04201a;
-    classDef core fill:#1a1815,stroke:#2b2824,color:#f3f1ea;
-    classDef store fill:#173029,stroke:#0f7a66,color:#7fe0cb;
-    class IN,SUP io;
-    class DUP,CLS,GR,GATE,BR,REV core;
-    class ST store;
-```
+<div align="center">
+<img src="docs/img/pipeline.png" width="820" alt="Pipeline: intake, dedupe, classify, guardrails, execute — fanning out to five branches">
+<br><sub>Rendered inside the product, not drawn for the README. One stage is a model; everything downstream is deterministic.</sub>
+</div>
 
 **Classification is the only place the model acts.** It proposes a type, an
 urgency, extracted entities and a rationale. That proposal is stored as a
@@ -140,6 +135,11 @@ manager adds a request type by editing config — no developer, no deploy.
 
 ## Remediation branches
 
+<div align="center">
+<img src="docs/img/executed.png" width="620" alt="A hardship case executing six steps, with the drafted reply held for approval">
+<br><sub>A hardship case executing end to end — automation paused as step one, escalated, supervisor notified, and the reply drafted but <b>held for approval, not sent</b>.</sub>
+</div>
+
 Type selects the branch. Urgency modulates *within* it: it sets the SLA clock,
 adds conditional steps, and routes to a senior handler above a per-branch
 threshold.
@@ -158,7 +158,7 @@ step and can never auto-resolve.** The asymmetry is argued from cost: a false
 escalation wastes two minutes of an agent's time; a missed hardship disclosure
 is a regulatory and human failure. That is not a close call.
 
-### Coverage of the brief's four named actions
+### Action coverage
 
 | Branch | `generate_response` | `route_to_team` | `set_follow_up` | `log_outcome` |
 |---|:---:|:---:|:---:|:---:|
@@ -189,9 +189,13 @@ branch still executed end to end — it just could not close the case.
 
 ## The human side of the handoff
 
-The brief's hardest optional enhancement is *"an escalation override mechanism
-for edge cases the AI is uncertain about."* That phrase has two halves. The
-gates are the first. This is the second.
+<div align="center">
+<img src="docs/img/human-review.png" width="660" alt="Execution trace with two stacked human review corrections and an approval">
+<br><sub>The corrected branch re-ran for real — draft, collections hold, senior routing, SLA follow-up — then <b>two stacked corrections and an approval</b>, each recording what the model proposed, what the system decided, and what the reviewer changed it to. Nothing overwritten.</sub>
+</div>
+
+An escalation mechanism for cases the model is unsure of has two halves. The
+gates are the first — they demote. This is the second.
 
 A reviewer can override the type and urgency on any live case. When they do:
 
@@ -210,6 +214,10 @@ A reviewer can override the type and urgency on any live case. When they do:
   gate, because being sure of the *label* is not a source for the *draft*.
 
 ## Results
+
+<div align="center">
+<img src="docs/img/performance.png" width="880" alt="Performance dashboard: accuracy, keyword baseline, cross-family holdout, branch completion, volume by type and status">
+</div>
 
 Measured on a **100-example held-out split, executed once and scored once**, on
 `llama-3.3-70b-versatile`, single-tier provenance verified. 63,906 tokens,
@@ -278,17 +286,16 @@ And the dial has measured numbers on it. On the same held-out split:
 Automation rate is a policy choice with a priced curve, not a model limit. We
 shipped the conservative point and report the alternatives.
 
-**Full automation was never the goal.** The brief asks for automatic
-*processing*, and that is 100% — every request received, classified,
+**Full automation was never the goal.** Automatic *processing* is 100% — every request received, classified,
 entity-extracted, branched, drafted, routed, SLA-timed and logged with no person
 involved. Closure without a human is a stricter metric we imposed on ourselves,
 because a system that closes a hardship disclosure or a disputed charge by
 itself is a compliance incident, not a feature. The saving is handle time, not
 headcount.
 
-## The brief's optional enhancements
+## Operational surface
 
-| Enhancement | Where it lives |
+| Capability | Where it lives |
 |---|---|
 | Batch processing of multiple requests | The corpus pipeline is the product's spine — 200- and 100-case batches, plus a file-upload intake channel |
 | Processing log / audit trail | Model proposal and system decision stored separately, full step trace, provider tier and decision source per case |
@@ -311,17 +318,15 @@ Found by us, disclosed rather than discovered.
 - **No fine-tuning.** There is no labelled real data. The review queue captures every override as training signal, which is what a next version learns from.
 - **Responsive layout deferred.** The desk assumes a wide viewport — a deliberate trade against measurement time.
 
-## Why not Streamlit, n8n or Retool
+## Why a state machine, not a workflow tool
 
-The brief suggests them; we used none, which needs justifying rather than
-assuming. A system with authority to pause collections needs control flow that
+Streamlit, Gradio, n8n and Retool are the obvious shortcuts here, and none were
+used — which needs justifying rather than assuming. A system with authority to pause collections needs control flow that
 is replayable, unit-testable and reviewable in version control — so the state
 machine is Python and every safety property is a test. `workflows.yaml` keeps
 the declarative benefit those tools sell: an operations manager adds a request
-type by editing config, with no developer and no deploy. The brief lists
-"hosted application" as an accepted demo format, and its rubric scores
-classification, branching, reliability, communication and reflection — not
-tooling.
+type by editing config, with no developer and no deploy. The declarative layer
+without the black box.
 
 ## Stack
 
@@ -363,8 +368,7 @@ Request-Triage/
 
 <div align="center">
 
-**Built for the Firstsource Agentic AI Engineer POC · Option 2, Incoming Request Processing Workflow**
-
-*A triage system's job is to make an operations floor cheaper, faster, safer and more consistent to run. Restraint is a feature regulated clients pay for.*
+*A triage system's job is to make an operations floor cheaper, faster, safer and
+more consistent to run. Restraint is a feature regulated clients pay for.*
 
 </div>
