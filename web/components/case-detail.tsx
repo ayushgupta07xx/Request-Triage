@@ -312,8 +312,12 @@ function DecisionPath({ c, overridden }: { c: Case; overridden: boolean }) {
               it here would attribute a person's words to the model. The note
               still renders under DECIDED as review_reason. The model's actual
               rationale survives in llm_proposal.rationale but is not
-              serialised into the card - restoring it is an engine change. */}
-          {!overridden && c.rationale ? (
+              serialised into the card - restoring it is an engine change.
+              Keyed on decision_source rather than `overridden`, because that
+              flag means "the final label differs from the proposal" and is
+              false when a reviewer corrects a guardrail catch back to what the
+              model originally said - the case where this misleads most. */}
+          {c.decision_source !== "human_override" && c.rationale ? (
             <p
               className="mt-3 max-w-[62ch] border-l pl-3.5 text-[13px] leading-relaxed text-muted-foreground"
               style={{ borderColor: "var(--border)" }}
