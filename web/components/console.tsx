@@ -41,28 +41,31 @@ export function DatasetToggle({
     | "top-right";
 }) {
   const meta = options.find((d) => d.key === dataset);
+  // The hint lives INSIDE the pill. Outside it, with no ring of its own, it
+  // reads as a stray mark floating next to the control rather than as part of
+  // it — and it is about the selected dataset, so it belongs to the toggle.
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="flex items-center rounded-full bg-secondary p-0.5">
-        {options.map((d) => (
-          <button
-            key={d.key}
-            onClick={() => onChange(d.key)}
-            className={`rounded-full px-2.5 py-1 text-[11px] ${
-              dataset === d.key
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground"
-            }`}
-          >
-            {d.label}
-          </button>
-        ))}
-      </div>
-      <InfoHint placement={hintPlacement}>
-        <span className="font-mono text-[10.5px]">{meta?.tier}</span>
-        <br />
-        {meta?.note}
-      </InfoHint>
+    <div className="inline-flex items-center rounded-full bg-secondary p-0.5 pr-2.5">
+      {options.map((d) => (
+        <button
+          key={d.key}
+          onClick={() => onChange(d.key)}
+          className={`rounded-full px-2.5 py-1 text-[11px] ${
+            dataset === d.key
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground"
+          }`}
+        >
+          {d.label}
+        </button>
+      ))}
+      <span className="ml-2 flex items-center">
+        <InfoHint placement={hintPlacement}>
+          <span className="font-mono text-[10.5px]">{meta?.tier}</span>
+          <br />
+          {meta?.note}
+        </InfoHint>
+      </span>
     </div>
   );
 }
@@ -275,13 +278,17 @@ export default function Console({
 
         <div className="pane min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
           {filtered.length === 0 ? (
-            <p className="px-3 pt-6 text-center text-[12px] leading-relaxed text-muted-foreground">
-              {liveEmpty
-                ? "Nothing processed on this tier yet."
-                : statusFilter === "auto"
-                  ? "Nothing auto-resolved here — on the held-out tier the derived policy automates nothing, by design."
-                  : "No cases match. Clear a filter."}
-            </p>
+            // Centred, like the detail pane's own empty state: an empty queue
+            // is a state of the pane, not a note pinned to the top of it.
+            <div className="grid h-full place-items-center px-3">
+              <p className="max-w-[28ch] text-center text-[12px] leading-relaxed text-muted-foreground">
+                {liveEmpty
+                  ? "Nothing processed on this tier yet."
+                  : statusFilter === "auto"
+                    ? "Nothing auto-resolved here — on the held-out tier the derived policy automates nothing, by design."
+                    : "No cases match. Clear a filter."}
+              </p>
+            </div>
           ) : (
             filtered.map((c) => (
               <QueueRow
@@ -341,9 +348,11 @@ export default function Console({
             </div>
           </div>
         ) : (
-          <p className="pt-8 text-[13px] text-muted-foreground">
-            Select a case from the queue.
-          </p>
+          <div className="grid h-full place-items-center">
+            <p className="text-[13px] text-muted-foreground">
+              Select a case from the queue.
+            </p>
+          </div>
         )}
       </section>
     </div>

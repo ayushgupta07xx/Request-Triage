@@ -24,11 +24,14 @@
     --secondary: #f1efe9;
     --secondary-foreground: #2a2820;
     --muted: #f1efe9;
-    --muted-foreground: #6f6d64;
+    /* was #6f6d64: marginal at full strength on this background, and the /60
+       and /70 modifiers used across the console pushed it under. Darkening the
+       token lifts every muted string in light mode at once. */
+    --muted-foreground: #5a584f;
     --accent: #faebe1;
     --accent-foreground: #8a421f;
     --destructive: #a32b1c;
-    --border: #ebe8e1;
+    --border: #ded9d0;
     --input: #e3e0d8;
     --ring: #c2643f;
     --radius: 0.75rem;
@@ -53,6 +56,10 @@
     --shadow-pop:
       0 14px 34px -16px rgba(23, 21, 15, 0.35),
       0 2px 10px -4px rgba(23, 21, 15, 0.16);
+
+    /* text selection: the accent, dilute enough that the text under it keeps
+       its own colour and stays readable */
+    --selection: rgba(194, 100, 63, 0.24);
 
     --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -101,6 +108,8 @@
       0 14px 34px -16px rgba(0, 0, 0, 0.65),
       0 2px 10px -4px rgba(0, 0, 0, 0.45);
 
+    --selection: rgba(43, 184, 156, 0.32);
+
     --glow:
       radial-gradient(50% 42% at 86% 6%, rgba(31, 158, 132, 0.15), transparent 62%),
       radial-gradient(58% 46% at 4% 100%, rgba(31, 158, 132, 0.07), transparent 60%),
@@ -137,6 +146,13 @@
   outline: 2px solid var(--ring);
   outline-offset: 3px;
   border-radius: 6px;
+}
+
+/* Selection follows the theme rather than the OS. Applies to inputs and
+   textareas too, which is where the default blue was most jarring. */
+::selection {
+  background: var(--selection);
+  color: var(--foreground);
 }
 
 @layer utilities {
@@ -211,6 +227,78 @@
     }
   }
 
+  /* pipeline diagram: nodes settle in sequence, each connector drawing from
+     the node it leaves. Delay is set per element, so the stagger is data, not
+     a pile of nth-child rules. */
+  .pipe-node {
+    animation: pipe-in 0.5s var(--ease-out) both;
+  }
+  .pipe-line {
+    animation: pipe-line 0.35s var(--ease-out) both;
+    transform-origin: left center;
+  }
+  .pipe-line-v {
+    animation: pipe-line-v 0.35s var(--ease-out) both;
+    transform-origin: top center;
+  }
+
+  /* waterfall: a tier arrives, then the line is drawn through it */
+  .wf-in {
+    animation: wf-in 0.34s var(--ease-out) both;
+  }
+  .wf-strike {
+    animation: wf-strike 0.34s var(--ease-out) both;
+    transform-origin: left center;
+  }
+  @keyframes wf-in {
+    from {
+      opacity: 0;
+      transform: scale(0.94);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes wf-strike {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+  @keyframes pipe-line-v {
+    from {
+      transform: scaleY(0);
+      opacity: 0;
+    }
+    to {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+  }
+  @keyframes pipe-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.94);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes pipe-line {
+    from {
+      transform: scaleX(0);
+      opacity: 0;
+    }
+    to {
+      transform: scaleX(1);
+      opacity: 1;
+    }
+  }
+
   /* scrollable but no visible bar — chapters manage their own overflow */
   .no-bar {
     scrollbar-width: none;
@@ -227,7 +315,12 @@
   .rise3,
   .page-enter,
   .chap-down,
-  .chap-up {
+  .chap-up,
+  .pipe-node,
+  .pipe-line,
+  .pipe-line-v,
+  .wf-in,
+  .wf-strike {
     animation: none;
     opacity: 1;
     transform: none;

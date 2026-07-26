@@ -597,7 +597,7 @@ export default function CaseDetail({
             ref={innerRef}
             className="no-bar max-h-full overflow-y-auto px-2 pb-12 pt-4"
           >
-            <div className="mx-auto w-full max-w-[660px]">
+            <div className="mx-auto w-full max-w-[800px]">
               {/* ============ chapter 1 · the verdict + the message ===== */}
               {i === 0 ? (
                 <>
@@ -695,7 +695,7 @@ export default function CaseDetail({
                         // its order.
                         if (n !== firstHiddenCorrection) return null;
                         return (
-                          <li key={n} className="relative pb-6 pl-7">
+                          <li key={n} className="relative pb-5 pl-7">
                             <span
                               aria-hidden
                               className="absolute left-[4px] top-3.5 h-full w-px"
@@ -733,7 +733,7 @@ export default function CaseDetail({
                           ? "var(--guard)"
                           : "var(--border-accent-strong)";
                       return (
-                        <li key={n} className={`relative pl-7 ${last ? "" : "pb-6"}`}>
+                        <li key={n} className={`relative pl-7 ${last ? "" : "pb-5"}`}>
                           {last ? null : (
                             <span
                               aria-hidden
@@ -772,7 +772,7 @@ export default function CaseDetail({
                             ) : null}
                           </div>
                           {summary ? (
-                            <div className="mt-1.5 max-w-[58ch] text-[13.5px] leading-relaxed text-muted-foreground">
+                            <div className="mt-1.5 max-w-[70ch] text-[13.5px] leading-relaxed text-muted-foreground">
                               {summary}
                             </div>
                           ) : null}
@@ -781,7 +781,7 @@ export default function CaseDetail({
                               // Outbound copy. It gets the card, because this is
                               // the thing a customer would actually receive.
                               <pre
-                                className="mt-2.5 max-w-[58ch] whitespace-pre-wrap rounded-xl p-4 font-sans text-[13px] leading-relaxed text-muted-foreground"
+                                className="mt-2.5 max-w-[72ch] whitespace-pre-wrap rounded-xl px-4 py-3.5 font-sans text-[13px] leading-[1.6] text-muted-foreground"
                                 style={{
                                   background: "var(--secondary)",
                                   border: "1px solid var(--border-accent)",
@@ -793,7 +793,7 @@ export default function CaseDetail({
                               // An audit record, not a message. Quieter, mono,
                               // no border - it is evidence, not correspondence.
                               <div
-                                className="mt-2 max-w-[62ch] whitespace-pre-wrap rounded-lg px-3 py-2 font-mono text-[11.5px] leading-relaxed text-muted-foreground"
+                                className="mt-2 max-w-[78ch] whitespace-pre-wrap rounded-lg px-3 py-2 font-mono text-[11.5px] leading-relaxed text-muted-foreground"
                                 style={{ background: "var(--secondary)" }}
                               >
                                 {s.artifact}
@@ -814,7 +814,7 @@ export default function CaseDetail({
                   </ol>
                   {/* the record's own identifiers, aligned to the timeline
                       column rather than hanging left of it */}
-                  <div className="mt-8 pl-7 font-mono text-[10px] text-foreground/70">
+                  <div className="mt-8 pl-8 font-mono text-[10px] text-foreground/70">
                     {c.case_id} · {c.trace_id}
                   </div>
                 </div>

@@ -22,6 +22,17 @@ type LiveCase = Case & {
   _waterfall?: string;
 };
 
+type RunMeta = {
+  duplicate: boolean;
+  dupOf: string | null;
+  expected: string | null;
+  actual: string | null;
+  drift: boolean;
+  source: string;
+  latency: number | null;
+  skipped: number;
+};
+
 type Ready = {
   ok: boolean;
   live_mode: boolean;
@@ -37,6 +48,49 @@ const CHANNELS = [
   { value: "web_form", label: "Web form" },
   { value: "email_batch", label: "Batch upload" },
 ] as const;
+
+// The pipeline, as the system actually runs it. Exactly one stage is a model,
+// and it is the only one wearing the accent: the diagram has to carry the
+// claim on slide two, or it is decoration. Guardrails take the guard colour
+// because that is what they are everywhere else in the product.
+const PIPELINE = [
+  { key: "intake", label: "Intake", sub: "3 channels", tone: null },
+  { key: "dedupe", label: "Dedupe", sub: "pre-model", tone: null },
+  {
+    key: "classify",
+    label: "Classify",
+    sub: "type · urgency",
+    tone: "var(--ok)",
+    tint: "var(--accent)",
+  },
+  {
+    key: "guardrails",
+    label: "Guardrails",
+    sub: "escalate only",
+    tone: "var(--guard)",
+    tint: "var(--guard-soft)",
+  },
+  { key: "execute", label: "Execute", sub: "from config", tone: null },
+] as const;
+
+// What EXECUTE fans out into. Descriptions are the branch's defining
+// behaviour, not its step count -- the counts live in workflows.yaml and are
+// not worth asserting from memory here.
+const BRANCHES = [
+  { key: "billing", label: "Billing dispute", note: "collections suppressed first" },
+  { key: "enquiry", label: "General enquiry", note: "grounded draft, or none" },
+  { key: "service", label: "Service request", note: "routed, SLA started" },
+  {
+    key: "hardship",
+    label: "Financial hardship",
+    note: "never auto-resolves",
+    tone: "var(--guard)",
+  },
+  { key: "other", label: "Out of scope", note: "logged, not failed" },
+] as const;
+
+// Connectors read against both backgrounds; --border alone disappears in dark.
+const RAIL = "var(--muted-foreground)";
 
 // How deep the waterfall runs is a property of the deployment, not a constant:
 // with a Gemini model configured the chain is three providers, so "all tiers
@@ -125,11 +179,203 @@ function Eyebrow({
   hint?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <span className="inline-flex shrink-0 items-center gap-1.5">
       <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
         {children}
       </span>
       {hint ? <InfoHint placement="bottom">{hint}</InfoHint> : null}
+    </span>
+  );
+}
+
+// The pipeline, drawn. Nodes settle left to right and each connector draws out
+// of the node it leaves, so the sequence reads as flow rather than as five
+// boxes appearing at once.
+function Pipeline() {
+  return (
+    <div>
+      <div className="flex items-stretch">
+        {PIPELINE.map((s, n) => {
+          const tone = s.tone ?? "var(--muted-foreground)";
+          const tint = "tint" in s ? s.tint : "var(--secondary)";
+          return (
+            <Fragment key={s.key}>
+              {n > 0 ? (
+                <div
+                  className="pipe-line flex min-w-[16px] flex-1 items-center self-start"
+                  style={{ marginTop: 17, animationDelay: `${n * 160 - 70}ms` }}
+                >
+                  <span
+                    className="h-px flex-1"
+                    style={{ background: RAIL, opacity: 0.5 }}
+                  />
+                  <span
+                    className="h-0 w-0"
+                    style={{
+                      borderTop: "4px solid transparent",
+                      borderBottom: "4px solid transparent",
+                      borderLeft: `5px solid ${RAIL}`,
+                      opacity: 0.5,
+                    }}
+                  />
+                </div>
+              ) : null}
+              <div
+                className="pipe-node w-[7.6rem] shrink-0 overflow-hidden rounded-lg"
+                style={{
+                  border: `1px solid ${s.tone ?? "var(--border)"}`,
+                  background: "var(--card)",
+                  animationDelay: `${n * 160}ms`,
+                }}
+              >
+                <div className="px-2.5 py-1.5" style={{ background: tint }}>
+                  <span
+                    className="font-mono text-[10px] uppercase tracking-[0.12em]"
+                    style={{ color: tone }}
+                  >
+                    {s.label}
+                  </span>
+                </div>
+                <div className="px-2.5 py-1.5">
+                  <span className="font-mono text-[9.5px] leading-tight text-muted-foreground">
+                    {s.sub}
+                  </span>
+                </div>
+              </div>
+            </Fragment>
+          );
+        })}
+      </div>
+
+      <p
+        className="pipe-node mx-auto mt-8 max-w-[52ch] text-center text-[12.5px] leading-relaxed text-muted-foreground"
+        style={{ animationDelay: "980ms" }}
+      >
+        Exactly one stage is a model — it proposes a type, an urgency and the
+        entities. Everything downstream of it is deterministic, replayable and
+        written to the audit trail.
+      </p>
+
+      {/* EXECUTE fans out: one branch per request type, steps declared in
+          config rather than in code. Centre drop, then a rail with a stub per
+          branch — the same connector vocabulary as the case timeline. */}
+      <div className="mt-8">
+        <div
+          className="pipe-line-v mx-auto w-px"
+          style={{
+            height: 22,
+            background: RAIL,
+            opacity: 0.5,
+            animationDelay: "1240ms",
+          }}
+        />
+        <div className="relative">
+          <div
+            className="pipe-line absolute left-[10%] right-[10%] top-0 h-px"
+            style={{
+              background: RAIL,
+              opacity: 0.5,
+              animationDelay: "1380ms",
+            }}
+          />
+          <div className="flex items-start">
+            {BRANCHES.map((b, n) => (
+              <div
+                key={b.key}
+                className="pipe-node flex flex-1 flex-col items-center px-1"
+                style={{ animationDelay: `${1470 + n * 90}ms` }}
+              >
+                <span
+                  className="w-px"
+                  style={{ height: 16, background: RAIL, opacity: 0.5 }}
+                />
+                <span
+                  className="mt-2 rounded-full px-2.5 py-1 text-center text-[10.5px] leading-tight"
+                  style={{
+                    background: "var(--secondary)",
+                    color:
+                      "tone" in b ? (b.tone as string) : "var(--foreground)",
+                  }}
+                >
+                  {b.label}
+                </span>
+                <span className="mt-1.5 text-center font-mono text-[9px] leading-tight text-muted-foreground">
+                  {b.note}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The waterfall as a stage rather than a list: only what has actually
+// happened is on it. The tier that answers stands alone in the middle, and
+// every tier it fell through is introduced along the top and then cut. The
+// type shrinks with each step down the chain, so the box reads as weakening
+// without a sentence saying so.
+//
+// The floor is deliberately NOT accent-coloured. chips.tsx already classes
+// keyword_fallback as neutral -- "not the model's judgement" -- and the floor
+// is capped at 0.60 and never auto-resolves, so accenting it here would
+// contradict a decision the product has already made.
+const ACTIVE_SIZE = [22, 18, 15, 12];
+
+function Waterfall({ chain, skip }: { chain: string[]; skip: number }) {
+  if (!chain.length) return null;
+  const active = Math.min(skip, chain.length - 1);
+  const dead = chain.slice(0, active);
+  const answering = chain[active];
+  const isFloor = active >= chain.length - 1;
+  const source = isFloor
+    ? "keyword_fallback"
+    : active === 0
+      ? "llm_primary"
+      : "llm_secondary";
+
+  return (
+    <div className="relative mt-2.5 h-[100px] overflow-hidden rounded-lg px-3 py-2 ring-1 ring-border">
+      {/* what has already failed, side by side, each cut as it arrives */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+        {dead.map((d) => (
+          <span
+            key={d}
+            className="wf-in relative inline-block font-mono text-[9px] leading-tight text-muted-foreground"
+            style={{ opacity: 0.55 }}
+          >
+            {d}
+            <span
+              aria-hidden
+              className="wf-strike absolute left-0 top-1/2 h-px w-full"
+              style={{ background: "currentColor", animationDelay: "130ms" }}
+            />
+          </span>
+        ))}
+      </div>
+
+      {/* whatever is answering, alone in the middle */}
+      <div className="pointer-events-none absolute inset-x-3 top-1/2 -translate-y-1/2 text-center">
+        <span
+          key={answering}
+          className="wf-in inline-block font-mono leading-none"
+          style={{
+            fontSize: ACTIVE_SIZE[Math.min(active, ACTIVE_SIZE.length - 1)],
+            color: isFloor ? "var(--muted-foreground)" : "var(--ok)",
+          }}
+        >
+          {answering}
+        </span>
+      </div>
+
+      <span
+        key={source}
+        className="wf-in absolute bottom-2 right-3 rounded-full bg-secondary px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
+        title="Recorded on the case as its decision source"
+      >
+        {source}
+      </span>
     </div>
   );
 }
@@ -145,15 +391,16 @@ export default function LiveConsole() {
   const [result, setResult] = useState<LiveCase | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const abort = useRef<AbortController | null>(null);
-  const [toast, setToast] = useState<{
-    title: string;
-    body: string;
-    drift: boolean;
-  } | null>(null);
-  const [toastIn, setToastIn] = useState(false);
-  const toastTimers = useRef<number[]>([]);
+  // What actually happened on the last run. It is rendered as a bar above the
+  // case and it stays there: a reviewer reading a degraded result should not
+  // have to have been looking at the moment it arrived.
+  const [meta, setMeta] = useState<RunMeta | null>(null);
   const outages = outageOptions(ready?.tiers ?? []);
   const tierNames = (ready?.tiers ?? []).map((t) => t.split(":").pop() ?? t);
+  // The chain the request will actually walk, floor included. Rendering it
+  // beats describing it: selecting an outage strikes the tiers it takes down
+  // and lights the one that answers.
+  const chain = [...tierNames, "keyword floor"];
   const outageDefs: [string, string][] = tierNames.length
     ? [
         ...tierNames.map(
@@ -202,64 +449,6 @@ export default function LiveConsole() {
     return () => window.clearInterval(id);
   }, [busy]);
 
-  const clearToast = useCallback(() => {
-    toastTimers.current.forEach(window.clearTimeout);
-    toastTimers.current = [];
-    setToastIn(false);
-    setToast(null);
-  }, []);
-
-  useEffect(() => () => toastTimers.current.forEach(window.clearTimeout), []);
-
-  // Which model actually answered, versus the one the selected tier implies.
-  // A silent fallthrough (daily quota spent on the primary, say) is correct
-  // behaviour but invisible unless you read the chip, so announce it.
-  const announce = useCallback(
-    (card: LiveCase, requestedSkip: number, chain: string[]) => {
-      // A duplicate never reaches a model: the fingerprint check runs before
-      // classification, so model_name is legitimately absent. Reading that as
-      // a degraded provider would report an outage that never happened.
-      if (card.status === "duplicate") {
-        setToast({
-          title: "Suppressed as duplicate",
-          body: `Matched an earlier request${
-            card.duplicate_of ? ` (${card.duplicate_of})` : ""
-          } — no model was called`,
-          drift: false,
-        });
-        window.requestAnimationFrame(() => setToastIn(true));
-        toastTimers.current.push(
-          window.setTimeout(() => setToastIn(false), 4600),
-          window.setTimeout(() => setToast(null), 5000),
-        );
-        return;
-      }
-
-      const short = chain.map((t) => t.split(":").pop() ?? t);
-      const expected =
-        requestedSkip >= short.length ? "keyword-floor" : short[requestedSkip];
-      const actual = card.model_name;
-      // No model name and no expectation to compare against means we know
-      // nothing, not that something failed. Stay quiet rather than guess.
-      const drift = Boolean(actual) && Boolean(expected) && actual !== expected;
-      setToast({
-        title: drift ? "Degraded automatically" : "Answered by",
-        body: drift
-          ? `${expected} was unavailable, so ${actual} answered · ${card.decision_source}`
-          : `${actual ?? card.decision_source}${
-              actual ? ` · ${card.decision_source}` : ""
-            }${card.latency_ms ? ` · ${card.latency_ms}ms` : ""}`,
-        drift,
-      });
-      window.requestAnimationFrame(() => setToastIn(true));
-      toastTimers.current.push(
-        window.setTimeout(() => setToastIn(false), 4600),
-        window.setTimeout(() => setToast(null), 5000),
-      );
-    },
-    [],
-  );
-
   const applyPreset = useCallback((p: (typeof PRESETS)[number]) => {
     setChannel(p.channel);
     setSubject(p.subject);
@@ -277,7 +466,7 @@ export default function LiveConsole() {
     setBusy(true);
     setError(null);
     setResult(null);
-    clearToast();
+    setMeta(null);
     setElapsed(0);
     try {
       const res = await fetch("/api/classify", {
@@ -304,7 +493,25 @@ export default function LiveConsole() {
       }
       const card = JSON.parse(text) as LiveCase;
       setResult(card);
-      announce(card, skip, ready?.tiers ?? []);
+      // A duplicate never reaches a model: the fingerprint check runs before
+      // classification, so an absent model_name is correct here rather than a
+      // provider failure. Reading it as one would report an outage that never
+      // happened.
+      const short = (ready?.tiers ?? []).map((t) => t.split(":").pop() ?? t);
+      const expected = skip >= short.length ? "keyword floor" : short[skip];
+      const actual = card.model_name;
+      setMeta({
+        duplicate: card.status === "duplicate",
+        dupOf: card.duplicate_of,
+        expected,
+        actual,
+        // No model name and no expectation to compare against means we know
+        // nothing, not that something failed.
+        drift: Boolean(actual) && Boolean(expected) && actual !== expected,
+        source: card.decision_source,
+        latency: card.latency_ms,
+        skipped: card._skipped_tiers ?? 0,
+      });
       // The desk's Live tab must show this case the moment the reviewer walks
       // over to it, so drop the cached queue rather than let a TTL decide.
       invalidateLiveDataset();
@@ -319,14 +526,15 @@ export default function LiveConsole() {
       window.clearTimeout(timeout);
       setBusy(false);
     }
-  }, [body, subject, channel, skip, busy, ready, announce, clearToast]);
+  }, [body, subject, channel, skip, busy, ready]);
 
   const disabled = busy || !body.trim() || ready?.live_mode === false;
+  const live = ready?.live_mode === true;
 
   return (
     <div className="grid h-[calc(100dvh-64px)] grid-cols-1 lg:grid-cols-[minmax(0,27rem)_minmax(0,1fr)]">
       {/* ---------------------------------------------------- compose pane */}
-      <section className="no-bar overflow-y-auto border-b px-6 py-6 lg:border-b-0 lg:border-r">
+      <section className="no-bar overflow-y-auto border-b px-6 py-4 lg:border-b-0 lg:border-r">
         <Eyebrow
           hint={
             <>
@@ -346,57 +554,65 @@ export default function LiveConsole() {
         >
           Live mode
         </Eyebrow>
-        <h1 className="mt-1.5 text-[20px] font-bold tracking-tight">
+        <h1 className="mt-1.5 text-[21px] font-bold tracking-tight">
           Run a real request
         </h1>
-        <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-          {ready === null
-            ? "checking…"
-            : ready.live_mode
-              ? `${ready.tier} tier · ${ready.tiers.length} providers${
-                  ready.storage === "turso" ? " · persisted" : ""
-                }`
-              : "live mode not configured"}
-        </p>
-        {ready && !ready.live_mode ? (
+        {/* status, not prose: the dot answers "is it up" before a word is read */}
+        <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1">
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{
+              background:
+                ready === null
+                  ? "var(--muted-foreground)"
+                  : live
+                    ? "var(--ok)"
+                    : "var(--guard)",
+            }}
+          />
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {ready === null ? (
+              "checking…"
+            ) : live ? (
+              <>
+                <span className="text-foreground">{ready.tier}</span> tier
+                <span className="opacity-40"> · </span>
+                <span className="text-foreground">{ready.tiers.length}</span>{" "}
+                providers
+                {ready.storage === "turso" ? (
+                  <>
+                    <span className="opacity-40"> · </span>persisted
+                  </>
+                ) : null}
+              </>
+            ) : (
+              "live mode not configured"
+            )}
+          </span>
+        </div>
+        {ready && !live ? (
           <p className="mt-2 text-[12px] leading-relaxed" style={{ color: "var(--primary)" }}>
             {ready.detail}
           </p>
         ) : null}
 
-        <div className="mt-5">
-          <Eyebrow
-            hint={
-              <>
-                Four messages, four branches. Each sets its own channel.
-                <Defs
-                  rows={[
-                    ["Hardship", "Looks like a service request; hides “cannot afford” in sentence four."],
-                    ["Enquiry", "Matches a knowledge-base entry, so the draft cites its source."],
-                    ["Billing", "Suppresses collections before anything else runs."],
-                    ["Out of scope", "An honest branch, not a failure. Routed and logged."],
-                  ]}
-                />
-              </>
-            }
-          >
-            Examples
-          </Eyebrow>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {PRESETS.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => applyPreset(p)}
-                title={p.note}
-                className="lift rounded-full px-3 py-1.5 text-[12px] text-muted-foreground ring-1 ring-border hover:text-foreground"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+        {/* Each control group leads with its own label on the same row, so a
+            group costs one line of height instead of two. */}
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <Eyebrow>Examples</Eyebrow>
+          {PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => applyPreset(p)}
+              title={p.note}
+              className="lift rounded-full px-3 py-1.5 text-[12px] text-muted-foreground ring-1 ring-border hover:text-foreground"
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
 
-        <div className="mt-5">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <Eyebrow
             hint={
               <>
@@ -407,59 +623,60 @@ export default function LiveConsole() {
           >
             Channel
           </Eyebrow>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {CHANNELS.map((c) => (
-              <button
-                key={c.value}
-                onClick={() => setChannel(c.value)}
-                className={`lift rounded-full px-3 py-1.5 text-[12px] ${
-                  channel === c.value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground ring-1 ring-border hover:text-foreground"
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
+          {CHANNELS.map((c) => (
+            <button
+              key={c.value}
+              onClick={() => setChannel(c.value)}
+              className={`lift rounded-full px-3 py-1.5 text-[12px] ${
+                channel === c.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground ring-1 ring-border hover:text-foreground"
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
         </div>
 
         <input
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Subject (optional)"
-          className="mt-5 w-full rounded-lg bg-transparent px-3 py-2 text-[13px] ring-1 ring-border placeholder:text-muted-foreground focus:outline-none focus:ring-2"
+          className="mt-3 w-full rounded-lg bg-transparent px-3 py-2 text-[13px] ring-1 ring-border placeholder:text-muted-foreground focus:outline-none focus:ring-2"
         />
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          rows={7}
+          rows={4}
           placeholder="Paste a customer request…"
           className="no-bar mt-2 w-full resize-y rounded-lg bg-transparent px-3 py-2 text-[13px] leading-relaxed ring-1 ring-border placeholder:text-muted-foreground focus:outline-none focus:ring-2"
         />
-        <div className="mt-1 text-right font-mono text-[10px] text-muted-foreground">
-          {body.length} / 8000
-        </div>
+        {/* only worth the line once there is something to count */}
+        {body.length > 0 ? (
+          <div className="mt-1 text-right font-mono text-[10px] text-muted-foreground">
+            {body.length} / 8000
+          </div>
+        ) : null}
 
-        <div className="mt-4">
-          <Eyebrow
-            hint={
-              <>
-                Takes the first N providers offline inside the real waterfall,
-                so the fallthrough is genuine rather than animated.
-                <Defs rows={outageDefs} />
-                Guardrails stay active at every level, including the floor.
-              </>
-            }
-          >
-            Providers offline
-          </Eyebrow>
-          <div className="mt-2 flex gap-1.5">
+        <div className="mt-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <Eyebrow
+              hint={
+                <>
+                  Takes the first N providers offline inside the real waterfall,
+                  so the fallthrough is genuine rather than animated.
+                  <Defs rows={outageDefs} />
+                  Guardrails stay active at every level, including the floor.
+                </>
+              }
+            >
+              Providers offline
+            </Eyebrow>
             {outages.map((o) => (
               <button
                 key={o.n}
                 onClick={() => setSkip(o.n)}
-                className={`lift min-w-[3.2rem] rounded-lg px-3 py-1.5 text-[12px] font-medium ${
+                className={`lift min-w-[2.8rem] rounded-lg px-2.5 py-1 text-[12px] font-medium ${
                   skip === o.n
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground ring-1 ring-border hover:text-foreground"
@@ -469,15 +686,13 @@ export default function LiveConsole() {
               </button>
             ))}
           </div>
-          <p className="mt-1.5 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
-            {outages.find((o) => o.n === skip)?.detail ?? ""}
-          </p>
+          <Waterfall chain={chain} skip={skip} />
         </div>
 
         <button
           onClick={run}
           disabled={disabled}
-          className={`lift mt-5 w-full rounded-full px-4 py-2.5 text-[14px] font-semibold ${
+          className={`lift mt-4 w-full rounded-full px-4 py-2.5 text-[14px] font-semibold ${
             disabled
               ? "cursor-not-allowed text-muted-foreground ring-1 ring-border"
               : "bg-primary text-primary-foreground"
@@ -498,49 +713,98 @@ export default function LiveConsole() {
 
       {/* ----------------------------------------------------- result pane */}
       <section className="relative flex h-full flex-col overflow-hidden">
-        {result && result._skipped_tiers ? (
-          <div
-            className="shrink-0 px-6 pb-1 pt-4 font-mono text-[10px] uppercase tracking-[0.14em]"
-            style={{ color: "var(--primary)" }}
-          >
-            simulated · {result._skipped_tiers} provider
-            {result._skipped_tiers > 1 ? "s" : ""} offline
+        {result && meta ? (
+          <div className="shrink-0 border-b px-6 py-2.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span
+                className="font-mono text-[10px] uppercase tracking-[0.16em]"
+                style={{
+                  color: meta.duplicate
+                    ? "var(--guard)"
+                    : meta.drift
+                      ? "var(--primary)"
+                      : "var(--ok)",
+                }}
+              >
+                {meta.duplicate
+                  ? "Suppressed as duplicate"
+                  : meta.drift
+                    ? "Degraded automatically"
+                    : "Answered by"}
+              </span>
+              <span className="font-mono text-[11.5px] text-muted-foreground">
+                {meta.duplicate ? (
+                  <>
+                    matched{" "}
+                    <span className="text-foreground">
+                      {meta.dupOf ?? "an earlier request"}
+                    </span>{" "}
+                    — no model was called
+                  </>
+                ) : (
+                  <>
+                    {meta.drift && meta.expected ? (
+                      <>
+                        <span className="line-through opacity-60">
+                          {meta.expected}
+                        </span>
+                        {" → "}
+                      </>
+                    ) : null}
+                    <span className="text-foreground">
+                      {meta.actual ?? meta.source}
+                    </span>
+                    <span className="opacity-40"> · </span>
+                    {meta.source}
+                    {meta.latency ? (
+                      <>
+                        <span className="opacity-40"> · </span>
+                        {meta.latency}ms
+                      </>
+                    ) : null}
+                  </>
+                )}
+              </span>
+              {meta.skipped ? (
+                <span
+                  className="ml-auto rounded-full bg-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]"
+                  style={{ color: "var(--primary)" }}
+                >
+                  simulated · {meta.skipped} offline
+                </span>
+              ) : null}
+            </div>
           </div>
         ) : null}
         <div className="min-h-0 flex-1">
           {result ? (
             <CaseDetail key={result.case_id} c={result} />
-          ) : (
+          ) : busy ? (
             <div className="grid h-full place-items-center px-8">
               <p className="max-w-xs text-center text-[13px] leading-relaxed text-muted-foreground">
-                {busy
-                  ? "Classifying, gating, executing the branch."
-                  : "Pick an example, then process it."}
+                Classifying, gating, executing the branch.
               </p>
+            </div>
+          ) : (
+            // Before anything has run, this pane explains the machine and then
+            // offers the way in: the diagram is what happens to any message,
+            // the list is four messages that each take a different branch.
+            <div className="no-bar grid h-full place-items-center overflow-y-auto px-10 py-8">
+              <div className="w-full max-w-[44rem]">
+                <div
+                  className="pipe-node font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
+                  style={{ animationDelay: "0ms" }}
+                >
+                  How a request is processed
+                </div>
+                <div className="mt-5">
+                  <Pipeline />
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        {toast ? (
-          <div
-            className={`pointer-events-none absolute bottom-5 right-12 z-20 max-w-[20rem] rounded-xl px-4 py-3 transition-opacity duration-300 ${
-              toastIn ? "opacity-100" : "opacity-0"
-            }`}
-            style={{
-              background: "var(--card)",
-              border: `1px solid ${toast.drift ? "var(--primary)" : "var(--border-accent)"}`,
-              boxShadow: "var(--shadow-accent)",
-            }}
-          >
-            <p
-              className="font-mono text-[10px] uppercase tracking-[0.16em]"
-              style={{ color: toast.drift ? "var(--primary)" : "var(--ok)" }}
-            >
-              {toast.title}
-            </p>
-            <p className="mt-1 font-mono text-[11.5px] leading-snug">{toast.body}</p>
-          </div>
-        ) : null}
       </section>
     </div>
   );
