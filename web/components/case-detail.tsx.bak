@@ -306,14 +306,8 @@ function DecisionPath({ c, overridden }: { c: Case; overridden: boolean }) {
               ) : null}
             </div>
           ) : null}
-          {/* the model's own reasoning, in its own words. Suppressed once a
-              human has overridden: `rationale` is the DECISION's field, and
-              apply_human_override rewrites it to the reviewer's note. Showing
-              it here would attribute a person's words to the model. The note
-              still renders under DECIDED as review_reason. The model's actual
-              rationale survives in llm_proposal.rationale but is not
-              serialised into the card - restoring it is an engine change. */}
-          {!overridden && c.rationale ? (
+          {/* the model's own reasoning, in its own words */}
+          {c.rationale ? (
             <p
               className="mt-3 max-w-[62ch] border-l pl-3.5 text-[13px] leading-relaxed text-muted-foreground"
               style={{ borderColor: "var(--border)" }}
