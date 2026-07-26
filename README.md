@@ -4,7 +4,8 @@
 
 # Handoff
 
-### Bounded-autonomy request triage for a UK consumer lending desk. Every request classified, branched and executed automatically — and anything uncertain handed to a person, on purpose.
+**Bounded-autonomy request triage for a lending operations desk.**
+Every request classified, branched and executed — anything uncertain handed to a person, on purpose.
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Pydantic](https://img.shields.io/badge/Pydantic-E92063?logo=pydantic&logoColor=white)
@@ -22,8 +23,6 @@
 ![Baseline](https://img.shields.io/badge/vs_keyword_baseline-%2B41_pts-2EA043)
 ![Branch completion](https://img.shields.io/badge/branch_completion-100%25-2EA043)
 ![Tests](https://img.shields.io/badge/tests-27_passing_offline-2EA043)
-
-**[🌐 Live app](https://handoff-triage.vercel.app)** · **[▶ 3-min demo](https://drive.google.com/file/d/1VyTk0n66fB1LlFOP8a9ld2dlqyUwe834/view?usp=sharing)** · **[📊 Design summary](docs/Ayush_Gupta_Incoming_Request_Processing_Workflow.pdf)** · **[📈 Eval reports](docs/eval/)** · **[🧭 Decisions](docs/DECISIONS.md)**
 
 </div>
 
@@ -100,9 +99,11 @@ corpus is in `data/corpus/`.
 ## How a request is processed
 
 <div align="center">
-<img src="docs/img/pipeline.png" width="820" alt="Pipeline: intake, dedupe, classify, guardrails, execute — fanning out to five branches">
-<br><sub>Rendered inside the product, not drawn for the README. One stage is a model; everything downstream is deterministic.</sub>
+<img src="docs/img/pipeline.png" width="860" alt="Pipeline: intake, dedupe, classify, guardrails, execute — fanning out to five branches">
+<br><sub>Rendered inside the product, not drawn for the README.</sub>
 </div>
+
+<br>
 
 **Classification is the only place the model acts.** It proposes a type, an
 urgency, extracted entities and a rationale. That proposal is stored as a
@@ -136,9 +137,11 @@ manager adds a request type by editing config — no developer, no deploy.
 ## Remediation branches
 
 <div align="center">
-<img src="docs/img/executed.png" width="620" alt="A hardship case executing six steps, with the drafted reply held for approval">
-<br><sub>A hardship case executing end to end — automation paused as step one, escalated, supervisor notified, and the reply drafted but <b>held for approval, not sent</b>.</sub>
+<img src="docs/img/executed.png" width="600" alt="A hardship case executing six steps, with the drafted reply held for approval">
+<br><sub>A hardship case, end to end. The reply is drafted but <b>held for approval, not sent</b>.</sub>
 </div>
+
+<br>
 
 Type selects the branch. Urgency modulates *within* it: it sets the SLA clock,
 adds conditional steps, and routes to a senior handler above a per-branch
@@ -190,9 +193,11 @@ branch still executed end to end — it just could not close the case.
 ## The human side of the handoff
 
 <div align="center">
-<img src="docs/img/human-review.png" width="660" alt="Execution trace with two stacked human review corrections and an approval">
-<br><sub>The corrected branch re-ran for real — draft, collections hold, senior routing, SLA follow-up — then <b>two stacked corrections and an approval</b>, each recording what the model proposed, what the system decided, and what the reviewer changed it to. Nothing overwritten.</sub>
+<img src="docs/img/human-review.png" width="860" alt="Execution trace with two stacked human review corrections and an approval">
+<br><sub>Two corrections and an approval, stacked. Nothing overwritten.</sub>
 </div>
+
+<br>
 
 An escalation mechanism for cases the model is unsure of has two halves. The
 gates are the first — they demote. This is the second.
