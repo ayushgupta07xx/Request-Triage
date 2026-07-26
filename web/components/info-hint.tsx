@@ -5,8 +5,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 // The interface shows; the hint explains only when asked.
 //  * Full typography reset on the panel — a hint mounted inside an uppercase
 //    mono eyebrow must not inherit any of that.
-//  * Accent-tinted surface, accent hairline, accent shadow: part of the brand
-//    skin, flips with the mode like everything else.
+//  * Neutral elevated surface — the hint is chrome, not content. Brand colour
+//    stays reserved for meaning (machine-resolved work, guardrails, urgency),
+//    so the panel reads popover / border / --shadow-pop and flips with the
+//    mode like everything else.
+//  * The trigger sits at reduced opacity until hovered: present when you look
+//    for it, invisible when you don't.
 //  * Measured against its nearest CLIPPING ANCESTOR, not the viewport — inside
 //    the desk, a chapter's own scroll container is what cuts a panel off long
 //    before the window edge does.
@@ -191,8 +195,7 @@ export default function InfoHint({
         aria-label={label}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[10px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
-        style={{ boxShadow: "inset 0 0 0 1px var(--border-accent)" }}
+        className="flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold text-muted-foreground opacity-60 transition-opacity hover:text-foreground hover:opacity-100"
       >
         ?
       </button>
@@ -212,10 +215,10 @@ export default function InfoHint({
             role="tooltip"
             className="block rounded-xl p-3 text-left font-sans text-xs font-normal normal-case leading-relaxed tracking-normal"
             style={{
-              background: "var(--accent)",
-              color: "var(--accent-foreground)",
-              border: "1px solid var(--border-accent-strong)",
-              boxShadow: "var(--shadow-accent-lg)",
+              background: "var(--popover)",
+              color: "var(--popover-foreground)",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow-pop)",
               opacity: ready ? 1 : 0,
               transform: ready
                 ? "none"
