@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import Wordmark from "./wordmark";
 
 function ThemeToggle() {
   const [dark, setDark] = useState(true);
@@ -43,11 +44,8 @@ export default function Nav() {
   ];
   return (
     <header className="sticky top-0 z-20 flex h-[64px] items-center gap-5 border-b bg-background/85 px-7 backdrop-blur">
-      <Link
-        href="/"
-        className="lift select-none rounded-lg px-1.5 py-0.5 text-[21px] font-bold tracking-tight"
-      >
-        Hand<span className="text-primary">off</span>
+      <Link href="/" className="lift rounded-lg px-1.5 py-1">
+        <Wordmark />
       </Link>
       <nav className="ml-auto flex items-center gap-2">
         {links.map((l) => {

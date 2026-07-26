@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { loadDataset, prefetchBakedDatasets } from "@/lib/data";
 import type { DemoData } from "@/lib/types";
 import CaseCarousel, { HandoffBar } from "@/components/case-carousel";
+import Wordmark from "@/components/wordmark";
 
 export default function Landing() {
   const [dev, setDev] = useState<DemoData | null>(null);
@@ -27,13 +28,28 @@ export default function Landing() {
 
   return (
     <div className="relative flex min-h-[calc(100dvh-64px)] flex-col">
-      <main className="page-enter mx-auto grid w-full max-w-7xl flex-1 items-center gap-14 px-8 py-12 lg:grid-cols-[1fr_1fr]">
+      <main className="page-enter mx-auto grid w-full max-w-7xl flex-1 items-center gap-14 px-8 py-10 lg:grid-cols-[1fr_1fr]">
         {/* ---- left: thesis ---------------------------------------------- */}
         <div>
-          <div className="rise font-mono text-[11px] uppercase tracking-[0.18em] text-primary">
-            Bounded-autonomy request processing
+          {/* Wide-tracked mono at 11px reads thin on its own. Filled, with a
+              live dot in front of it, the line carries the weight the claim
+              deserves. */}
+          <div
+            className="rise inline-flex items-center gap-2 rounded-full px-3 py-1.5"
+            style={{ background: "var(--accent)" }}
+          >
+            <span
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ background: "var(--ok)" }}
+            />
+            <span
+              className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.16em]"
+              style={{ color: "var(--accent-foreground)" }}
+            >
+              Bounded-autonomy request processing
+            </span>
           </div>
-          <h1 className="rise mt-4 text-balance text-[44px] font-bold leading-[1.06] tracking-tight sm:text-[56px]">
+          <h1 className="rise mt-5 text-balance text-[36px] font-bold leading-[1.08] tracking-tight sm:text-[46px]">
             The model decides.
             <br />
             The state machine executes.
@@ -94,12 +110,13 @@ export default function Landing() {
       </main>
 
       {/* ---- footer ------------------------------------------------------ */}
-      <footer className="flex items-center justify-between px-7 py-5">
-        <span className="select-none text-[16px] font-bold tracking-tight">
-          Hand<span className="text-primary">off</span>
-        </span>
+      <footer className="flex items-center justify-between gap-4 border-t px-7 py-4">
+        <Wordmark size="footer" />
         <span className="font-mono text-[11px] tracking-[0.05em] text-muted-foreground">
-          © Northgate Servicing · consumer lending operations
+          ©{" "}
+          <span className="text-foreground/80">Northgate Servicing</span>
+          <span className="opacity-40"> · </span>
+          consumer lending operations
         </span>
       </footer>
     </div>

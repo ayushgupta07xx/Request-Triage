@@ -11,8 +11,12 @@ import InfoHint from "./info-hint";
 // system is built around. Nothing here is mocked -- every card is a persisted
 // case from the audit record.
 
-const HOLD = 2600;
-const FADE = 700;
+// The first swap is the page's proof that these are real cases cycling rather
+// than a screenshot. It has to land before a reader's attention moves to the
+// nav, so the opening hold is shorter than the ones that follow.
+const FIRST_HOLD = 1600;
+const HOLD = 2700;
+const FADE = 550;
 
 function pickShowcase(cases: Case[]): Case[] {
   const picks: Case[] = [];
@@ -55,52 +59,57 @@ export function HandoffBar({ automated }: { automated: number }) {
   }, []);
   const a = Math.round(automated * 100);
   const h = 100 - a;
+  const grow = (delay: number) => ({
+    transformOrigin: "left center",
+    transform: mounted ? "scaleX(1)" : "scaleX(0)",
+    transition: `transform 620ms cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
+  });
   return (
     <div className="mt-5">
-      <div className="mb-2 flex items-center justify-between font-mono text-[11px] tracking-[0.06em]">
-        <span style={{ color: "var(--ok)" }}>◀ RESOLVED {a}%</span>
-        <span className="text-muted-foreground">HANDED OVER {h}% ▶</span>
-      </div>
-      <div
-        className="relative h-[38px] overflow-hidden rounded-xl bg-secondary"
-        style={{ border: "1px solid var(--border-accent)" }}
-      >
-        <div
-          className="absolute inset-y-0 left-0"
-          style={{
-            width: `${a}%`,
-            background: "var(--ok)",
-            opacity: 0.92,
-            transformOrigin: "left center",
-            transform: mounted ? "scaleX(1)" : "scaleX(0)",
-            transition: "transform 620ms cubic-bezier(0.22,1,0.36,1)",
-          }}
-        />
-        <div
-          className="absolute inset-y-0 right-0"
-          style={{
-            left: `${a}%`,
-            background: "var(--muted-foreground)",
-            opacity: 0.32,
-            transformOrigin: "right center",
-            transform: mounted ? "scaleX(1)" : "scaleX(0)",
-            transition: "transform 620ms cubic-bezier(0.22,1,0.36,1) 80ms",
-          }}
-        />
-        <div
-          className="absolute -inset-y-px w-[2px] bg-background"
-          style={{ left: `${a}%`, transform: "translateX(-1px)" }}
-        />
-      </div>
-      <div className="mt-2.5 flex items-center justify-center gap-1.5 font-mono text-[10.5px] tracking-[0.04em] text-muted-foreground">
-        <span className="text-foreground">100% classified, branched and executed</span>
+      {/* The whole-batch claim leads. The split below is what happened after,
+          and both halves of it are work the system did. */}
+      <div className="flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+        <span className="text-foreground">Every request</span>
+        <span>· classified, branched, executed</span>
         <InfoHint placement="top" label="What the split means">
           Every request is received, classified, entity-extracted, branched,
-          drafted, routed and logged with no person involved. The split above is
+          drafted, routed and logged with no person involved. The split below is
           only what closed itself — the rest reach an associate already prepared.
           That is the design: a disputed charge or a hardship disclosure should
           never close automatically.
         </InfoHint>
+      </div>
+
+      <div
+        className="mt-3 flex h-3 w-full overflow-hidden rounded-full"
+        style={{ background: "var(--secondary)" }}
+      >
+        <div style={{ width: `${a}%`, background: "var(--ok)", ...grow(0) }} />
+        <div
+          style={{
+            width: `${h}%`,
+            background: "var(--muted-foreground)",
+            ...grow(90),
+          }}
+        />
+      </div>
+
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 font-mono text-[10.5px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: "var(--ok)" }}
+          />
+          Resolved without a person <span className="text-foreground">{a}%</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: "var(--muted-foreground)" }}
+          />
+          Prepared, then handed over{" "}
+          <span className="text-foreground">{h}%</span>
+        </span>
       </div>
     </div>
   );
@@ -114,14 +123,23 @@ export default function CaseCarousel({ data }: { data: DemoData }) {
   useEffect(() => {
     if (showcase.length < 2) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = setInterval(() => {
-      setShow(false);
-      setTimeout(() => {
-        setIdx((i) => (i + 1) % showcase.length);
-        setShow(true);
-      }, FADE);
-    }, HOLD + FADE);
-    return () => clearInterval(id);
+    let holdT = 0;
+    let fadeT = 0;
+    const schedule = (hold: number) => {
+      holdT = window.setTimeout(() => {
+        setShow(false);
+        fadeT = window.setTimeout(() => {
+          setIdx((i) => (i + 1) % showcase.length);
+          setShow(true);
+          schedule(HOLD);
+        }, FADE);
+      }, hold);
+    };
+    schedule(FIRST_HOLD);
+    return () => {
+      window.clearTimeout(holdT);
+      window.clearTimeout(fadeT);
+    };
   }, [showcase.length]);
 
   const c = showcase[idx];
@@ -134,14 +152,14 @@ export default function CaseCarousel({ data }: { data: DemoData }) {
         transition: `opacity ${FADE}ms cubic-bezier(0.33,0,0.2,1)`,
       }}
     >
-      <div key={c.case_id} className="surface card-lift rounded-2xl p-7">
+      <div key={c.case_id} className="surface card-lift rounded-2xl p-8">
         <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
           <span>Decision</span>
           <SourceChip source={c.decision_source} />
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-2.5">
-          <span className="text-[27px] font-bold leading-tight tracking-tight">
+          <span className="text-[30px] font-bold leading-tight tracking-tight">
             {TYPE_LABELS[c.request_type] ?? c.request_type}
           </span>
           <UrgencyChip urgency={c.urgency} />
