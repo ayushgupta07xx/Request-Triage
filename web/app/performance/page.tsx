@@ -46,18 +46,22 @@ export default function PerformancePage() {
     );
   }
 
+  // No page heading: the nav already names this page, and the desk does not
+  // repeat its own name either. The dataset toggle rides on the results
+  // eyebrow instead of owning a row of its own.
   return (
     <main className="page-enter mx-auto max-w-6xl px-6 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-[22px] font-bold tracking-tight">Performance</h1>
-        <DatasetToggle
-          dataset={dataset}
-          onChange={(k: DatasetKey) => {
-            if (k !== "live") setDataset(k);
-          }}
-        />
-      </div>
-      <Performance data={all[dataset]} />
+      <Performance
+        data={all[dataset]}
+        toolbar={
+          <DatasetToggle
+            dataset={dataset}
+            onChange={(k: DatasetKey) => {
+              if (k !== "live") setDataset(k);
+            }}
+          />
+        }
+      />
     </main>
   );
 }
