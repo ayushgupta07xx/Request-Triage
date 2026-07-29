@@ -116,7 +116,7 @@ independent gates can demote a case toward a human; **none can promote one.**
 
 | Gate | What it does |
 |---|---|
-| **Guardrails** | Deterministic phrase filters run on raw text *before* the proposal is trusted. Hardship, vulnerability and regulatory phrases override the model. Escalate only — they can force a more serious type or raise urgency, never the reverse. |
+| **Guardrails** | Five deterministic phrase tiers, run on raw text *before* the proposal is trusted: `hardship_disclosure` (forces the type), `hardship_possible` (holds for review without forcing it), `vulnerability_indicator`, `regulatory_escalation`, `complaint_language`. Escalate only — they can force a more serious type or raise urgency, never the reverse. |
 | **Confidence** | Per-class thresholds on the quality tier, derived by sweep. On the bulk tier, an ensemble: the model and the keyword floor must agree *and* confidence must be 1.00. A model with no derived entry never auto-handles anything. |
 | **Grounding** | An enquiry draft composes only from a matched knowledge-base entry and cites its source. No match, an ambiguous match, or a blocked topic means no auto-resolve. `grounded: true` in config is an enforced contract, not a comment. |
 | **Provider floor** | Keyword-decided rows are capped at 0.60 confidence and always route to a human. A degraded system stays available; it never becomes more autonomous. |
@@ -280,16 +280,36 @@ only branch whose config permits self-closure, it has no derived auto-policy on
 the quality tier, and so nothing closed itself. **The system declined an
 autonomy it had not earned.**
 
+The development figure is the *post-grounding-gate* number, and the gap is worth
+stating plainly. Before the grounding contract was enforced, 34 of those 200
+cases closed themselves — `data/runs/corpus_dev_bulk.jsonl` still carries that
+run. The gate demoted exactly half of them: replaying the batch through the
+fixed engine (`scripts/replay_drafts.py`) leaves **17 auto-resolved, 8.5%**, with
+all 17 demotions landing in `awaiting_human` (129 → 146). That is what
+`web/public/demo-dev200.json` is baked from.
+
+**The grounding gate cost half the automation rate and shipped anyway**, because
+the half it removed was enquiries closing themselves with nothing to cite. An
+enquiry that auto-resolves without a source is not 17 units of automation; it is
+17 customers sent a confident answer the system could not stand behind.
+
 And the dial has measured numbers on it. On the same held-out split:
 
 | Operating point | Automated | Auto precision | Errors escaping / 100 |
 |---|---|---|---|
-| Shipped: per-class thresholds | 21% | 100.0% | 0 |
+| Per-class thresholds, re-derived on this split | 21% | 100.0% | 0 |
 | Floor agreement + confidence ≥ 0.80 | **36%** | 97.2% | 1 |
 | Confidence ≥ 0.90 alone | 82% | 89.0% | 9 |
 
 Automation rate is a policy choice with a priced curve, not a model limit. We
 shipped the conservative point and report the alternatives.
+
+Read the first row precisely. It is `run_eval.py` re-deriving per-class gates
+*on this split*, which picks `financial_hardship` and `other` — so it describes a
+policy `triage/config.py` would refuse to load, since a `financial_hardship`
+class gate is a hard validation error. The shipped policy is `billing_dispute`
+only, derived on dev. The row answers "what precision is available at what
+volume", not "what runs". What runs auto-*routes*; it never auto-*closes*.
 
 **Full automation was never the goal.** Automatic *processing* is 100% — every request received, classified,
 entity-extracted, branched, drafted, routed, SLA-timed and logged with no person
@@ -321,6 +341,8 @@ Found by us, disclosed rather than discovered.
 - **Retrieval is keyword-matched, not embedded.** Eleven KB entries, no vector store — deliberately not called RAG. Automation is bounded by KB coverage, not model quality. The swap interface is `triage/kb.lookup`.
 - **SQLite and in-process execution.** At ~10k requests/day this needs Postgres, queue workers and per-class model routing.
 - **No fine-tuning.** There is no labelled real data. The review queue captures every override as training signal, which is what a next version learns from.
+- **The adversarial set is committed but unscored.** `data/corpus/adversarial.jsonl` holds 30 stress cases (multi-intent, buried hardship, polite fury, garbled, out-of-scope, terse) at `split: unassigned`. They are in neither the dev nor the test split, so no published number includes them. They are a stress fixture, not evidence.
+- **`complaint_language` raises urgency but does not demand review.** It is the one guardrail tier carrying no `requires_human_review`. Complaint text is still blocked from auto-answering by `_NEVER_AUTO` in `triage/kb.py`, so a complaint cannot be closed with a templated reply — but the guardrail alone would not hold it. Adding the flag is a one-line config change, not made here because every committed run was measured under the current config.
 - **Responsive layout deferred.** The desk assumes a wide viewport — a deliberate trade against measurement time.
 
 ## Why a state machine, not a workflow tool
@@ -348,10 +370,15 @@ without the black box.
 Request-Triage/
 ├── triage/                 # the system
 │   ├── workflows.yaml      # branches, guardrails, SLAs, routing, auto-policies
+│   ├── config.py           # loads and validates workflows.yaml at import time
 │   ├── engine.py           # state machine, branch execution, human override
-│   ├── classifier.py       # LLM perception + provider waterfall + keyword floor
+│   ├── classifier.py       # perception + guardrails + auto-gate + keyword floor
+│   ├── llm.py              # provider waterfall, header-driven backoff, --pin mode
 │   ├── schemas.py          # LLMClassification (proposal) vs Classification (decision)
-│   ├── kb.py               # knowledge base, grounding gate
+│   ├── kb.py               # knowledge base, grounding gate, blocked topics
+│   ├── card.py             # the single case -> UI card projection, shared by both paths
+│   ├── live_view.py        # live cases in the same shape as a baked batch
+│   ├── store.py            # SQLite audit store
 │   └── turso.py            # libSQL twin of the case store
 ├── web/                    # Next.js console + FastAPI serverless functions
 │   ├── app/                # landing · desk · performance · live

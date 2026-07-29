@@ -19,9 +19,12 @@ Three ideas carry this module, and each is worth being able to defend:
    remaining requests/tokens and a reset interval; honouring those is the
    difference between riding the limit and hammering it.
 
-The system prompt is never interpolated. It is byte-identical on every call so
-that prompt caching applies, and cached tokens do not count against the rate
-limit.
+The system prompt is never interpolated. It is byte-identical on every call for
+determinism, and so the benefit lands automatically if the workload ever moves
+to a cache-supported model family -- but no caching applies today. Groq caches
+only the gpt-oss family; measured on-key, two identical calls both returned
+cached_tokens=None at ~602 tokens each (scripts/diag/caching_probe.py). The
+rate-limit claim this comment used to make is withdrawn; see DECISIONS #16.
 """
 
 from __future__ import annotations

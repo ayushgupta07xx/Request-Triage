@@ -145,6 +145,10 @@ def build_dataset(records: list[CaseRecord], generated_from: str = "live") -> di
     for c in cards:
         type_status[c["request_type"]][c["status"]] += 1
 
+    # Always 0 here, by construction: CaseRecord has no usage block, so a live
+    # case carries no token count. The key is kept because the console's
+    # Summary type requires it and scripts/export_demo.py populates it for
+    # measurement-mode batch runs, where the run row does carry usage.
     usage_total = sum((p.get("usage_total_tokens") or 0) for p in payloads)
 
     summary = {

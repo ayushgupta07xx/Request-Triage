@@ -491,8 +491,11 @@ def _validate() -> None:
         assert e.source.strip(), f"{e.id}: entry must cite a source"
         for t in e.triggers:
             assert t == t.lower(), f"{e.id}: trigger not lowercase: {t!r}"
-        # an entry that would immediately be blocked is a contradiction
-        assert not blocked_topic("", e.answer) or True  # answers may mention terms
+        # Deliberately NOT checked: whether an answer contains a _NEVER_AUTO
+        # term. An entry may legitimately mention one -- the fees entry says
+        # "arrears admin fee". Blocking is decided on the INBOUND message, never
+        # on the answer text. (What stood here was an assertion disjoined with
+        # a literal true, so it could never fail and checked nothing.)
 
 
 _validate()

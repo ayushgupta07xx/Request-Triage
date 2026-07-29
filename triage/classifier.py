@@ -35,8 +35,12 @@ from .schemas import (
 
 PROMPT_VERSION = "v1"
 
-# Byte-identical on every call: prompt caching applies, and cached tokens do
-# not count against the rate limit. Nothing is ever interpolated here.
+# Byte-identical on every call for determinism and forward-compatibility --
+# NOT for caching. Groq caches only the gpt-oss family; the llama models this
+# system runs are unsupported. Measured on our own key: two identical calls
+# both returned cached_tokens=None at ~602 tokens each
+# (scripts/diag/caching_probe.py, DECISIONS #16). Every call pays full prompt
+# cost. Nothing is ever interpolated here.
 SYSTEM_PROMPT = """You classify inbound customer messages for a UK consumer lending and mortgage servicing operations desk.
 
 Request types:

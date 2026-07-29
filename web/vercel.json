@@ -7,6 +7,10 @@
     "api/review.py": {
       "maxDuration": 60,
       "includeFiles": "api/triage/**"
+    },
+    "api/cases.py": {
+      "maxDuration": 60,
+      "includeFiles": "api/triage/**"
     }
   }
 }

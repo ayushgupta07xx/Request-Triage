@@ -282,10 +282,14 @@ mitigation.
 SQLite → Postgres or Turso; batch runner → queue workers with retry semantics;
 per-class model routing (billing is cheap and clean at 8B, hardship is not);
 prompt-cache economics begin to matter, but only if the workload moves to a cache-supported model family — the current llama models cache nothing (see #16); and the review queue needs
-real workflow tooling, since at a 70% review rate the bottleneck is human
+real workflow tooling, since at a ~79% review rate the bottleneck is human
 capacity, not model throughput. The honest answer to "why is automation only
-~30%" is that the precision bar was set at 95% and this is what 95% costs
+~21%" is that the precision bar was set at 95% and this is what 95% costs
 today — raising it means better perception, not a looser gate.
+
+*(The 30% / 70% figures this entry originally carried predate policy v3. The
+shipped operating point on the held-out split is 21% auto-routed and 0%
+auto-closed — see #11 for why those are different numbers.)*
 
 ---
 ## 16. Measuring on a rate-limited free tier — a contamination caught, then instrumented
